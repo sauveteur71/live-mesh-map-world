@@ -4444,13 +4444,13 @@ async function rendreModules(force) {
     <p class="note">Un module ne peut servir qu'un client à la fois : se connecter ici déconnecte l'appli du téléphone, et « Libérer » lui rend la main. Seuls les modules joignables depuis le NAS (même réseau ou VPN) peuvent être connectés.</p>
     <div id="retour-modules" class="note"></div>
     <details id="bloc-agents" ${ouvertAgents ? 'open' : ''}><summary>Module par agent : USB sur un PC, ou module d’un autre réseau</summary>
-      <p class="note">L’agent est un petit programme lancé sur le PC où le module est branché en USB (ou sur un appareil du réseau où se trouve un module Wi-Fi, ex. Le Monteil). Il se connecte au NAS par Tailscale et relaie le module : la carte l’utilise comme les autres.</p>
+      <p class="note">L’agent est un petit programme lancé sur le PC où le module est branché en USB (ou sur un appareil du réseau où se trouve un module Wi-Fi, ex. une maison voisine). Il se connecte au NAS par Tailscale et relaie le module : la carte l’utilise comme les autres.</p>
       <ol class="note etapes-agent">
         <li>Téléchargez l’agent : <a href="/agent/live-mesh-agent-windows.exe" download>Windows</a> · <a href="/agent/live-mesh-agent-linux-amd64" download>Linux</a> · <a href="/agent/live-mesh-agent-raspberrypi-arm64" download>Raspberry Pi 64 bits</a> · <a href="/agent/live-mesh-agent-raspberrypi-armv7" download>Raspberry Pi 32 bits</a></li>
         <li>Lancez-le et répondez aux questions : adresse du serveur <b class="mono">${esc(location.hostname)}:${(r.agents && r.agents.port) || 4404}</b> (ou son adresse Tailscale), le code ci-dessous, un nom (ex. Voiture), le port USB (COM5…) ou l’adresse du module Wi-Fi.</li>
         <li>Le module apparaît ici avec le badge « agent » : cliquez sur Connecter.</li>
       </ol>
-      <p class="note"><b>Plusieurs modules</b> (ex. USB, Le Monteil, QRA) : relancez l’agent avec <span class="mono">-configurer</span> puis <b>a</b> pour ajouter une connexion. Chacune apparaît ici sous son nom quand son module est présent (port USB branché, ou PC sur le réseau du module Wi-Fi).</p>
+      <p class="note"><b>Plusieurs modules</b> (ex. USB, maison, QRA) : relancez l’agent avec <span class="mono">-configurer</span> puis <b>a</b> pour ajouter une connexion. Chacune apparaît ici sous son nom quand son module est présent (port USB branché, ou PC sur le réseau du module Wi-Fi).</p>
       <div class="code-agent">Code secret : <b class="mono" id="code-agent">••••-••••-••••</b> <button type="button" id="voir-code">Afficher</button> <button type="button" id="nouveau-code" title="Les agents déjà configurés devront recevoir le nouveau code">Nouveau code</button></div>
       <p class="note">Fermez l’appli Meshtastic du PC pendant ce temps (un port USB ne sert qu’un programme). Pour administrer vos nœuds avec ce module, sa clé publique doit figurer dans leurs clés d’administration.</p>
     </details>`;
