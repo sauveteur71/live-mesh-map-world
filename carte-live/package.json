@@ -1,6 +1,6 @@
 {
   "name": "live-mesh-map-world",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Live map, monitoring and administration of Meshtastic and MeshCore networks (MQTT, LoRa)",
   "main": "src/server.js",
   "type": "commonjs",
