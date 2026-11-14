@@ -20,13 +20,14 @@
     <div class="marque">
       <span class="logo"></span>
       <div>
-        <div class="nom">Carte live</div>
+        <div class="nom"><span class="nom-carte">Carte live</span> <a class="soutien" href="https://www.helloasso.com/associations/radioclub-du-velay/formulaires/2" target="_blank" rel="noopener" title="Le programme est gratuit : un don au Radio-club du Velay aide à le faire vivre">♥ <span class="s-long">Soutenir le projet</span><span class="s-court">Soutenir</span></a></div>
         <div class="sous">Carte live · Haute-Loire</div>
         <a id="version" class="version" target="_blank" rel="noopener" hidden></a>
       </div>
       <span id="direct" class="direct" title="État de la connexion au broker">
         <i></i><b>Connexion…</b>
       </span>
+      <button type="button" id="chip-alertes" class="chip-alertes" hidden></button>
     </div>
     <div class="kpis">
       <div class="kpi"><b id="k-actifs">–</b><span>nœuds actifs</span></div>
@@ -56,6 +57,9 @@
       <button class="bascule" data-couche="inactifs" title="Afficher les nœuds non entendus depuis longtemps">Inactifs</button>
       <button class="bascule actif" data-couche="animations" title="Animer les paquets en direct">Animations</button>
       <button class="bascule actif" data-couche="sommets" title="Points hauts du relief et meilleurs sites radio">Points hauts</button>
+      <button class="bascule" data-couche="feux" title="Foyers de feu détectés par satellite (NASA FIRMS, 24 h) : rouge moins de 3 h, orange moins de 12 h. Non confirmés">Feux actifs</button>
+      <button class="bascule" data-couche="radar" title="Radar de pluie (RainViewer), mis à jour toutes les 10 min">Radar de pluie</button>
+      <button class="bascule" data-couche="dfci" title="Carroyage DFCI des pompiers (100 km, 20 km, 2 km et zones 1 à 5 selon le zoom)">Carroyage DFCI</button>
       <button class="bascule" data-couche="routiers" title="Webcams et stations du Département et de la DIR Massif Central (mât, électricité) : sites possibles pour des relais">Sites routiers</button>
       <button class="bascule actif" data-couche="federation" title="Relais des bulles voisines (cartes fédérées)">Bulles voisines</button>
       <button class="bascule actif seul-membre" data-couche="releves" title="Relevés de terrain (photos, notes, mesures)" hidden>Relevés terrain</button>
@@ -150,7 +154,7 @@
       <div class="tableau" id="tableau-reseau">
       <div class="mt-seul">
         <details class="pli-alertes" data-pli="alertes-mt">
-          <summary><h3>Alertes <span class="titre-reseau">Meshtastic</span> <span id="nb-alertes" class="pastille">0</span> <span id="resume-alertes" class="resume-alertes"></span></h3></summary>
+          <summary><h3>Alertes <span class="titre-reseau titre-mt-alertes">Meshtastic</span> <span id="nb-alertes" class="pastille">0</span> <span id="resume-alertes" class="resume-alertes"></span></h3></summary>
           <div id="alertes" class="liste-alertes"></div>
         </details>
       </div>
@@ -214,7 +218,7 @@
     </section>
     <section data-vue="noeuds" class="vue">
       <div class="recherche">
-        <input id="recherche" type="search" placeholder="Nom, nom court ou !identifiant…" autocomplete="off">
+        <input id="recherche" type="search" placeholder="Nom, nom court, !identifiant ou début de clé…" autocomplete="off">
         <select id="groupe-noeuds" title="Groupe de nœuds"><option value="">Tous</option><option value="favoris">⭐ Favoris</option><option value="administres">🛠 Mes nœuds</option></select>
         <select id="tri">
           <option value="vu">Dernier entendu</option>
@@ -224,6 +228,7 @@
         </select>
         <button type="button" class="mini" id="mt-par-type" title="Ranger la liste par type (relais, clients, traceurs…), chaque groupe se replie">▦ Par type</button>
       </div>
+      <div id="filtre-reseau-noeuds" class="filtre-reseau" hidden role="group" aria-label="Réseau"><button type="button" data-r="tous">Tous</button><button type="button" data-r="mt">Meshtastic</button><button type="button" data-r="mc">MeshCore</button></div>
       <div id="noeuds" class="liste"></div>
     </section>
 
@@ -407,6 +412,10 @@
   <dialog id="dlg-installation" class="large">
     <h2>Bienvenue : installation de la carte</h2>
     <p class="note">Première mise en route. Créez le compte administrateur, puis indiquez votre zone et votre serveur MQTT. Tout reste modifiable ensuite dans <b>Réglages</b>.</p>
+    <div class="encart-restauration">
+      <b>♻️ Vous changez de serveur ?</b> Reprenez tout d'un coup (base, réglages, comptes) depuis le fichier <span class="mono">carte-live-complete-….tar.gz</span> de l'ancien serveur (Réglages › 📦 Sauvegarde complète).
+      <div><button type="button" id="inst-restaurer">♻️ Restaurer une sauvegarde complète…</button> <span id="inst-restauration" class="note"></span></div>
+    </div>
     <form id="form-installation">
       <h3>1. Compte administrateur</h3>
       <div class="grille-form">
@@ -435,6 +444,7 @@
 
   <script src="/langue.js"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/dfci.js"></script>
   <script src="/app.js"></script>
   <script src="/animations.js"></script>
   <script src="/meshcore.js"></script>

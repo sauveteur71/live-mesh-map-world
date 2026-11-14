@@ -5,6 +5,11 @@ Onglet **Messages** (administrateur, module radio relié) :
 - choisir un **canal**, ou **✉️ Message direct… (choisir un nœud)** : une recherche par nom, nom court ou `!identifiant`, nœuds récents en tête ;
 - les **correspondants récents** sont proposés directement dans la liste ;
 - un clic sur un message reçu prépare la réponse sur le bon canal (ou en direct à son auteur).
+- un clic sur le **nom de l'auteur** (ou du destinataire) ouvre un petit menu : **📇 Fiche du nœud**, **✉️ Message direct**, **📍 Voir sur la carte**. Sur un canal MeshCore, où seul le nom est connu, la carte retrouve le nœud quand un seul porte ce nom ;
+- **⚡ Message rapide** : textes tout prêts (RAS, Bien reçu, En route, Sur place…), ajoutés d'un clic ; « ✏️ Modifier la liste… » pour mettre les vôtres (gardés dans ce navigateur) ;
+- **@mention** : tapez `@` puis le début d'un nom, choisissez dans la liste ou complétez avec Tab ;
+- **brouillon** : un message commencé est gardé par canal, même après rechargement de la page ;
+- dans les messages reçus, des **coordonnées** (« 45.0431, 3.8853 ») ou un **carreau DFCI** sont cliquables et centrent la carte dessus.
 
 ## Savoir si le message est passé
 Sous chaque message envoyé depuis la carte :
@@ -17,6 +22,8 @@ Sous chaque message envoyé depuis la carte :
 | ⚠ Aucun accusé reçu | rien n'est revenu |
 
 Sous **chaque** message : **📡 Entendu par N récepteurs**, avec pour chacun la passerelle, en direct ou le nombre de sauts, le SNR et le dernier relais. Un clic ouvre le parcours sur la carte.
+
+Sous un message de canal MeshCore relayé, le nombre de sauts est suivi de la **taille des hachages** du chemin (« 2 sauts · 2 o »).
 
 **Limites** : un nœud sans passerelle MQTT qui reçoit votre message ne laisse aucune trace. Sur les canaux privés, seules les passerelles qui ont l'envoi vers MQTT activé sur ce canal le remontent. Un message de canal n'a pas d'accusé de lecture : pour vérifier qu'un correspondant précis vous entend, envoyez-lui un **message direct**.
 

@@ -4,6 +4,8 @@ Real-time map, monitoring and **remote administration** of a [Meshtastic](https:
 
 ![The live map: Meshtastic and MeshCore nodes, measured links](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/en-carte.jpg)
 
+![The live map: Meshtastic and MeshCore nodes, measured links](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/en-carte.jpg)
+
 ## Where to start
 1. [[Installation]]: Docker, `.env`, setup wizard.
 2. [[Connect the network|Brancher le réseau]]: MQTT broker, channels.

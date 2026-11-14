@@ -2,13 +2,22 @@
 // Carte live Meshtastic — serveur : MQTT -> décodage -> SQLite -> API REST + WebSocket temps réel
 
 const http = require('http');
+const { ecrireSur, lireJson } = require('./fichiers');
 const path = require('path');
 const net = require('net');
 const crypto = require('crypto');
 const express = require('express');
 const mqtt = require('mqtt');
 const { WebSocketServer } = require('ws');
+// Langue du journal : LANGUE=en (ou la langue par défaut de l'édition, champ langueServeur de package.json)
+const LANGUE_SERVEUR = String(process.env.LANGUE || require('../package.json').langueServeur || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
+require('./traduction').installerJournal(LANGUE_SERVEUR);
 
+// Restauration d'une sauvegarde complète préparée avant le redémarrage : appliquée avant de lire les réglages et la base
+{
+  const fb = (process.env.FICHIER_BASE || '/data/carte-live.db').trim();
+  try { require('./restauration').appliquerSiPrete(path.dirname(fb), path.basename(fb), (...a) => console.log(new Date().toISOString(), ...a)); } catch (e) { console.log(new Date().toISOString(), '[Restauration] impossible :', e.message); }
+}
 const config = require('./config');
 const VERSION = require('../package.json').version;
 const { calculerVoisins, calculerRegions } = require('./voisins');
@@ -169,7 +178,7 @@ const DEPOT = process.env.DEPOT_GITHUB || 'sauveteur71/live-mesh-map-world';
 const majDispo = { version: null, url: null, verifie: 0, erreur: null };
 const comparerVersions = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
 async function verifierDerniereVersion() {
-  if (process.env.VERIFIER_MAJ === '0') return;
+  if (/^(0|non|no|false|off)$/i.test(String(process.env.VERIFIER_MAJ || ''))) return;
   try {
     const r = await fetch(`https://api.github.com/repos/${DEPOT}/releases/latest`, { headers: { 'User-Agent': 'carte-live/' + VERSION, Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -199,6 +208,7 @@ app.get('/api/aide/:page', (req, res) => {
 
 app.get('/api/config', (req, res) => {
   res.json({
+    fonctionsMasquees: typeof fonctionsMasquees !== 'undefined' ? [...fonctionsMasquees] : [],
     version: infosVersion(),
     titre: config.carte.titre,
     outils: { client: config.urlClient || '', flasher: config.urlFlasher || '' },
@@ -328,7 +338,7 @@ const reliefsEtude = new Map();
 // pour que le premier calcul d'un département soit rapide.
 const fReliefPublic = path.join(path.dirname(config.fichierBase), 'relief-public.json');
 let reliefPublic = { couverture: 'departement' };
-try { reliefPublic = { ...reliefPublic, ...JSON.parse(fs.readFileSync(fReliefPublic, 'utf8')) }; } catch { /* défaut */ }
+try { reliefPublic = { ...reliefPublic, ...lireJson(fReliefPublic) }; } catch { /* défaut */ }
 const franceOuverte = () => reliefPublic.couverture === 'france';
 const precharge = { enCours: false, arret: false, total: 0, faits: 0, deja: 0, erreurs: [], courant: null, etape: null, aCompleter: [], instance: null, debut: null, fin: null };
 const reliefSurDisque = (code) => ['mnt-' + code + '.bin', 'sommets-osm-' + code + '.json'].every((f) => fs.existsSync(path.join(path.dirname(config.fichierBase), f)));
@@ -373,7 +383,7 @@ async function prechargerFrance() {
   if (precharge.enCours) return;
   const codes = listeDepartements.map((d) => d.code).filter((c) => c !== String(config.departement.code).toUpperCase());
   // Gardé sur disque : après un redémarrage de la carte (mise à jour), la préparation reprend où elle en était
-  reliefPublic.preparation = true; try { fs.writeFileSync(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
+  reliefPublic.preparation = true; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
   Object.assign(precharge, { enCours: true, arret: false, total: codes.length, faits: 0, deja: 0, erreurs: [], courant: null, etape: null, aCompleter: [], debut: Date.now(), fin: null });
   journal(`[Relief] préparation de toute la France : ${codes.length} départements`);
   // D'abord le paquet « relief France » publié sur GitHub (un seul téléchargement), s'il manque des départements
@@ -420,12 +430,12 @@ async function prechargerFrance() {
   // « Télécharger et installer » : la carte publique passe d'elle-même en « tous les départements » une fois prête
   if (!precharge.arret && reliefPublic.activerFrance) {
     reliefPublic.couverture = 'france'; reliefPublic.activerFrance = false;
-    try { fs.writeFileSync(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
+    try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
     journal('[Relief] toute la France prête : la carte publique calcule maintenant dans tous les départements');
   }
   journal(`[Relief] préparation de la France ${precharge.arret ? 'arrêtée' : 'terminée'} : ${precharge.faits}/${precharge.total} (${precharge.erreurs.length} erreur(s))`);
   Object.assign(precharge, { enCours: false, courant: null, fin: Date.now() });
-  if (!redemarrageEnCours) { reliefPublic.preparation = false; try { fs.writeFileSync(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }
+  if (!redemarrageEnCours) { reliefPublic.preparation = false; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }
 }
 let redemarrageEnCours = false;
 process.once('SIGTERM', () => { redemarrageEnCours = true; });
@@ -454,7 +464,7 @@ let contoursDeps = null;
 function departementDuPoint(lat, lon) {
   if (!contoursDeps) {
     try {
-      contoursDeps = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson'), 'utf8')).features.map((f) => ({
+      contoursDeps = lireJson(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson')).features.map((f) => ({
         code: f.properties.code, poly: f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates,
       }));
     } catch { contoursDeps = []; }
@@ -513,11 +523,11 @@ app.post('/api/relief/france', (req, res) => {
   if (b.couverture !== undefined) {
     if (!['departement', 'france'].includes(b.couverture)) return res.status(400).json({ erreur: 'choix invalide' });
     reliefPublic.couverture = b.couverture;
-    try { fs.writeFileSync(fReliefPublic, JSON.stringify(reliefPublic)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
+    try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
     journal(`[Relief] couverture de la carte publique : ${b.couverture === 'france' ? 'toute la France' : 'département de la carte'} (${utilisateur(req).identifiant})`);
   }
   if (b.precharger === true) {
-    if (b.activer) { reliefPublic.activerFrance = true; try { fs.writeFileSync(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }
+    if (b.activer) { reliefPublic.activerFrance = true; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }
     prechargerFrance();
   }
   if (b.precharger === false && precharge.enCours) precharge.arret = true;
@@ -640,13 +650,13 @@ app.get('/api/relief/couverture-reseau', (req, res) => {
 // Principales villes d'un département (API Géo de l'État), gardées sur le disque
 async function villesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `villes-${code}.json`);
-  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* à télécharger */ }
-  if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); fs.writeFileSync(f, JSON.stringify(res)); return res; }
+  try { return lireJson(f); } catch { /* à télécharger */ }
+  if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).sort((a, b) => b.population - a.population).slice(0, 20)
     .map((c) => ({ nom: c.nom, lat: c.centre.coordinates[1], lon: c.centre.coordinates[0], population: c.population }));
-  fs.writeFileSync(f, JSON.stringify(l));
+  ecrireSur(f, JSON.stringify(l));
   return l;
 }
 // Déplacer des relais existants : calcul en arrière-plan (1 à 3 min), résultat gardé jusqu'au prochain classement
@@ -692,12 +702,12 @@ app.get('/api/relief/sites-routiers', async (req, res) => {
 // Toutes les communes d'un département (centre, population), pour les habitants couverts
 async function communesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `communes-${code}.json`);
-  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* à télécharger */ }
-  if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l; fs.writeFileSync(f, JSON.stringify(res)); return res; }
+  try { return lireJson(f); } catch { /* à télécharger */ }
+  if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l; ecrireSur(f, JSON.stringify(res)); return res; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).map((c) => ({ nom: c.nom, lat: c.centre.coordinates[1], lon: c.centre.coordinates[0], population: c.population }));
-  fs.writeFileSync(f, JSON.stringify(l));
+  ecrireSur(f, JSON.stringify(l));
   return l;
 }
 // Plan à budget : n relais, coûts unitaires (€) facultatifs
@@ -777,7 +787,7 @@ app.get('/api/relief/couverture/:id.png', (req, res) => {
 const cacheRecherche = new Map();
 const sansAccents = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[-']/g, ' ');
 let reperes = [];
-try { reperes = JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', 'donnees-ref', `reperes-${config.departement.code}.json`), 'utf8')); } catch { /* facultatif */ }
+try { reperes = lireJson(path.join(__dirname, '..', 'donnees-ref', `reperes-${config.departement.code}.json`)); } catch { /* facultatif */ }
 app.get('/api/reperes', (req, res) => res.json(reperes.map(({ alias, ...r }) => r)));
 const distKm = (a, b) => { const r = Math.PI / 180; const s = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lon - a.lon) * r) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(s)); };
 app.get('/api/recherche', async (req, res) => {
@@ -1431,6 +1441,28 @@ app.get('/api/signal', (req, res) => {
   res.json({ de, passerelle: gw, points });
 });
 // Passerelles qui ont entendu un nœud (pour le menu « Comparer les signaux »)
+// Statistiques d'un nœud : activité heure par heure (7 jours), types de paquets, SNR reçus en direct, sauts, récepteurs
+app.get('/api/noeuds/:num/statistiques', (req, res) => {
+  const n = Number(req.params.num) >>> 0;
+  const jours = Math.min(Math.max(Number(req.query.jours) || 7, 1), config.retentionJours || 7);
+  const d = Date.now() - jours * 86400000;
+  const db = stockage.db;
+  const fmtHeure = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hourCycle: 'h23' });
+  const tz = (h) => { const x = new Date(h); return { j: Math.floor((Date.now() - h) / 86400000), h: Number(fmtHeure.formatToParts(x).find((q) => q.type === 'hour').value) % 24, js: x.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit' }) }; };
+  // Carte de chaleur : ligne = jour (0 = aujourd'hui), colonne = heure locale
+  const chaleur = Array.from({ length: jours }, () => new Array(24).fill(0)), libJours = new Array(jours).fill('');
+  for (const r of db.prepare('SELECT heure FROM paquets WHERE de = ? AND heure >= ?').iterate(n, d)) {
+    const t = tz(r.heure); if (t.j < jours) { chaleur[t.j][t.h]++; libJours[t.j] = t.js; }
+  }
+  for (let j = 0; j < jours; j++) if (!libJours[j]) libJours[j] = new Date(Date.now() - j * 86400000).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit' });
+  const types = db.prepare('SELECT COALESCE(nom_port, port, \'?\') AS type, COUNT(*) AS nb FROM paquets WHERE de = ? AND heure >= ? GROUP BY 1 ORDER BY nb DESC').all(n, d);
+  const sauts = db.prepare('SELECT sauts, COUNT(*) AS nb FROM paquets WHERE de = ? AND heure >= ? AND sauts IS NOT NULL GROUP BY sauts ORDER BY sauts').all(n, d);
+  // SNR des réceptions directes (0 saut) par tranches de 2,5 dB
+  const snr = db.prepare('SELECT CAST(FLOOR(r.snr / 2.5) * 2.5 AS REAL) AS tranche, COUNT(*) AS nb FROM receptions r JOIN paquets p ON p.rowid = r.paquet WHERE p.de = ? AND r.heure >= ? AND r.sauts = 0 AND r.snr IS NOT NULL AND r.passerelle != ? GROUP BY tranche ORDER BY tranche').all(n, d, n);
+  const recepteurs = db.prepare('SELECT r.passerelle AS num, COUNT(*) AS nb, ROUND(AVG(r.snr), 1) AS snr, MIN(r.sauts) AS sautsMin FROM receptions r JOIN paquets p ON p.rowid = r.paquet WHERE p.de = ? AND r.heure >= ? AND r.passerelle != ? GROUP BY r.passerelle ORDER BY nb DESC LIMIT 12').all(n, d, n);
+  const total = types.reduce((a, t) => a + t.nb, 0);
+  res.set('Cache-Control', 'no-store').json({ jours, total, chaleur, libJours, types, sauts, snr, recepteurs });
+});
 app.get('/api/noeuds/:num/entendu-par', (req, res) => {
   const n = Number(req.params.num) >>> 0;
   const depuis = Date.now() - config.retentionJours * 86400000;
@@ -1438,6 +1470,69 @@ app.get('/api/noeuds/:num/entendu-par', (req, res) => {
       (SELECT p2.rowid FROM receptions r3 JOIN paquets p2 ON p2.rowid = r3.paquet WHERE p2.de = @n AND r3.passerelle = r.passerelle ORDER BY r3.heure DESC LIMIT 1) AS derniereTrame,
       (SELECT r4.snr FROM receptions r4 JOIN paquets p4 ON p4.rowid = r4.paquet WHERE p4.de = @n AND r4.passerelle = r.passerelle ORDER BY r4.heure DESC LIMIT 1) AS dernierSnr
       FROM receptions r JOIN paquets p ON p.rowid = r.paquet WHERE p.de = @n AND r.heure >= @d AND r.passerelle != @n GROUP BY r.passerelle ORDER BY dernier DESC`).all({ n, d: depuis }));
+});
+
+// ---- Responsable de chaque nœud (membres : nom ; gestionnaires : contact ; modification : qui peut gérer le nœud) ----
+const responsables = require('./responsables').creerResponsables({ config, comptes, journal });
+app.get('/api/responsables', (req, res) => {
+  if (!estMembre(req)) return res.status(401).json({ erreur: 'Connexion requise' });
+  res.set('Cache-Control', 'no-store').json(responsables.liste({ avecContact: estGestion(req) }));
+});
+// Comptes proposables comme responsables (sans adresse mail)
+app.get('/api/responsables/comptes', (req, res) => {
+  if (!estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  res.json(comptes.lister().filter((c) => c.statut === 'actif').map((c) => ({ id: c.id, nom: c.indicatif ? `${c.identifiant} (${c.indicatif})` : c.identifiant, role: c.role })));
+});
+app.post('/api/noeuds/:num/responsable', (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  if (!peutGerer(req, req.params.num)) return refuserSecteur(res);
+  try {
+    const r = responsables.definir(req.params.num, req.body || {}, { auteur: nomCompte(u), admin: u.role === 'admin' });
+    diffuser({ genre: 'responsables' });
+    res.json({ ok: true, responsable: r });
+  } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+
+// « Pour le joindre » : par quelle station la carte peut atteindre ce nœud, et dans quel sens la liaison est prouvée.
+// Une liaison a → b signifie « b a entendu a ». Entendre un nœud ne prouve pas qu'il nous entend : le retour n'est
+// prouvé que par son voisinage (il nous liste), une traceroute qui revient, ou une liaison mesurée dans l'autre sens.
+app.get('/api/noeuds/:num/joindre', (req, res) => {
+  const n = Number(req.params.num) >>> 0;
+  const depuis = Date.now() - 7 * 86400000;
+  const db = stockage.db;
+  const lien = db.prepare('SELECT source, snr, dernier_vu AS dernier FROM liens WHERE a = ? AND b = ? AND dernier_vu >= ? ORDER BY dernier_vu DESC');
+  const nomDe = (x) => { const r = stockage.q.noeud.get(x >>> 0); return r ? r.nom_long || r.nom_court || r.id : '!' + (x >>> 0).toString(16).padStart(8, '0'); };
+  const recep = db.prepare(`SELECT MIN(r.sauts) AS sautsMin, MAX(r.heure) AS dernier, COUNT(*) AS nb FROM receptions r JOIN paquets p ON p.rowid = r.paquet
+      WHERE p.de = ? AND r.passerelle = ? AND r.heure >= ?`);
+  const trOk = db.prepare("SELECT heure FROM traceroutes WHERE origine = ? AND cible = ? AND statut = 'repondu' AND heure >= ? ORDER BY heure DESC LIMIT 1");
+  // Stations : nos modules radio (ceux qui peuvent émettre) puis les passerelles MQTT qui l'ont entendu
+  const nos = new Map();
+  try { const i = sourceRadio.infos(); if (i.noeudLocal) nos.set(i.noeudLocal >>> 0, { connecte: !!i.connecte, via: 'module de la carte' }); } catch { /* pas de module */ }
+  try { for (const e of (ecoutes.liste().meshtastic || [])) if (e.noeud && !nos.has(e.noeud >>> 0)) nos.set(e.noeud >>> 0, { connecte: !!e.connecte, via: 'module en écoute' }); } catch { /* aucune écoute */ }
+  const passerelles = db.prepare(`SELECT DISTINCT r.passerelle AS gw FROM receptions r JOIN paquets p ON p.rowid = r.paquet WHERE p.de = ? AND r.heure >= ? AND r.passerelle != ?`).all(n, depuis, n).map((x) => x.gw >>> 0);
+  const stations = [...nos.keys(), ...passerelles.filter((g) => !nos.has(g))];
+  const lignes = stations.filter((s) => s !== n).map((s) => {
+    const entend = lien.all(n, s, depuis), retour = lien.all(s, n, depuis); // s entend n ; n entend s
+    const r = recep.get(n, s, depuis) || {};
+    const tr = nos.has(s) ? trOk.get(s, n, depuis) : null;
+    const direct = entend.length > 0 || r.sautsMin === 0;
+    const retourProuve = retour.length > 0 || !!tr;
+    const preuveRetour = retour.length ? `${retour[0].source === 'voisinage' ? 'il nous liste dans son voisinage' : retour[0].source === 'traceroute' ? 'traceroute' : 'liaison mesurée'}${retour[0].snr != null ? ` (${retour[0].snr} dB)` : ''}` : tr ? 'traceroute revenue' : null;
+    let verdict;
+    if (direct && retourProuve) verdict = 'direct, aller-retour prouvé';
+    else if (direct) verdict = 'direct, sens retour non prouvé';
+    else if (r.sautsMin != null) verdict = `${r.sautsMin} saut${r.sautsMin > 1 ? 's' : ''}${retourProuve ? '' : ', sens retour non prouvé'}`;
+    else if (retourProuve) verdict = 'il nous entend, mais nous ne l’entendons pas';
+    else verdict = 'hors de portée';
+    return {
+      station: s, nom: nomDe(s), emetteur: nos.has(s), via: nos.has(s) ? nos.get(s).via : 'passerelle MQTT', connecte: nos.has(s) ? nos.get(s).connecte : null,
+      verdict, direct, retourProuve, preuveRetour, sautsMin: r.sautsMin ?? null, snrEntendu: entend.length ? entend[0].snr : null, dernier: Math.max(r.dernier || 0, entend.length ? entend[0].dernier : 0) || null,
+    };
+  });
+  const rang = (x) => (x.emetteur ? 0 : 10) + (x.direct && x.retourProuve ? 0 : x.direct ? 1 : x.sautsMin != null ? 2 + x.sautsMin : 9);
+  lignes.sort((a, b) => rang(a) - rang(b) || (b.dernier || 0) - (a.dernier || 0));
+  res.set('Cache-Control', 'no-store').json({ num: n, lignes: lignes.slice(0, 15) });
 });
 
 app.get('/api/traceroutes', (req, res) => {
@@ -1449,7 +1544,7 @@ const fTrReglages = path.join(path.dirname(config.fichierBase), 'traceroutes-reg
 const cfgTrEnv = { cibles: [...config.radio.tracerouteCibles], intervalle: config.radio.tracerouteIntervalleMinutes };
 function appliquerReglagesTr() {
   let r = {};
-  try { r = JSON.parse(require('fs').readFileSync(fTrReglages, 'utf8')); } catch { /* aucun */ }
+  try { r = lireJson(fTrReglages); } catch { /* aucun */ }
   config.radio.tracerouteCibles = Array.isArray(r.cibles) && r.cibles.length ? r.cibles.map(String) : cfgTrEnv.cibles;
   config.radio.tracerouteHeures = r.heures === 'nuit' ? 'nuit' : 'toujours';
   if (Number.isFinite(r.intervalle)) config.radio.tracerouteIntervalleMinutes = r.intervalle;
@@ -1464,7 +1559,7 @@ app.post('/api/traceroutes/reglages', (req, res) => {
     heures: b.heures === 'nuit' ? 'nuit' : 'toujours',
     intervalle: Math.min(Math.max(Number(b.intervalle) || 180, 0), 1440),
   };
-  try { require('fs').writeFileSync(fTrReglages, JSON.stringify(r)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
+  try { ecrireSur(fTrReglages, JSON.stringify(r)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
   res.json(appliquerReglagesTr());
 });
 // Synthèse : pour chaque nœud tracé depuis 7 jours, dernier chemin mesuré, taux de réponse, changement de route
@@ -1632,7 +1727,7 @@ app.get('/api/paquets', (req, res) => {
 });
 
 app.get('/api/etat', (req, res) => {
-  res.json({ stats: reseau.statistiques(), alertes: dernieresAlertes, meshmonitor: sourceMM ? sourceMM.etat() : null, radio: sourceRadio ? sourceRadio.etat() : null, ecoutes: resumeEcoutes() });
+  res.json({ stats: reseau.statistiques(), alertes: estAdmin(req) ? dernieresAlertes : alertesPubliques(dernieresAlertes), meshmonitor: sourceMM ? sourceMM.etat() : null, radio: sourceRadio ? sourceRadio.etat() : null, ecoutes: resumeEcoutes() });
 });
 
 app.get('/api/messages', (req, res) => {
@@ -1790,7 +1885,7 @@ app.delete('/api/comptes/:id', (req, res) => {
 // ---- Installation et réglages ---------------------------------------------------------
 let listeDepartements = [];
 try {
-  listeDepartements = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson'), 'utf8')).features
+  listeDepartements = lireJson(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson')).features
     .map((f) => ({ code: f.properties.code, nom: f.properties.nom, bbox: emprise(f.geometry) })).sort((a, b) => a.code.localeCompare(b.code));
 } catch { /* liste indisponible */ }
 app.get('/api/departements', (req, res) => res.json(listeDepartements));
@@ -1861,7 +1956,8 @@ function sansValeursEnv(r) {
 }
 function enregistrerReglagesEtRedemarrer(r, qui) {
   sansValeursEnv(r);
-  fs.writeFileSync(config.fichierReglages, JSON.stringify(r, null, 1), { mode: 0o600 });
+  // Écriture sûre (voir fichiers.js) : l'ancienne version est gardée en reglages.json.bak
+  ecrireSur(config.fichierReglages, JSON.stringify(r, null, 1), { mode: 0o600 });
   journal(`Réglages enregistrés par ${qui}, redémarrage du service…`);
   setTimeout(() => process.exit(0), 1200); // Docker relance le conteneur (restart: unless-stopped)
 }
@@ -1876,7 +1972,7 @@ function preparerCodeInstallation() {
   if (!codeInstallationAuto) {
     const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     codeInstallationAuto = [...crypto.randomBytes(8)].map((b) => A[b % A.length]).join('').replace(/(.{4})(?=.)/, '$1-');
-    try { fs.writeFileSync(f, codeInstallationAuto, { mode: 0o600 }); } catch { /* lecture seule */ }
+    try { ecrireSur(f, codeInstallationAuto, { mode: 0o600 }); } catch { /* lecture seule */ }
   }
   journal('==================================================================');
   journal(`Installation : code d'installation ${codeInstallationAuto}`);
@@ -2099,7 +2195,7 @@ function etatMc(admin) {
   if (admin) {
     e.companion = { ...c, canaux: companion.canaux() };
     e.republication = publicateurMc.etat();
-    e.reglages = { iata: config.meshcore.iata, racine: config.meshcore.racine, republier: config.meshcore.republier, canaux: config.meshcore.canaux.join('\n'), perimetre: config.meshcore.perimetre, iataVoisins: config.meshcore.iataVoisins.join(', '), horsPerimetre: compteurMc.horsPerimetre || 0 };
+    e.reglages = { iata: config.meshcore.iata, racine: config.meshcore.racine, republier: config.meshcore.republier, canaux: config.meshcore.canaux.join('\n'), perimetre: config.meshcore.perimetre, liensOctetsMin: config.meshcore.liensOctetsMin, iataVoisins: config.meshcore.iataVoisins.join(', '), horsPerimetre: compteurMc.horsPerimetre || 0 };
     e.agents = agents.liste();
     e.ecoutes = ecoutes.liste().meshcore;
   }
@@ -2194,6 +2290,11 @@ app.delete('/api/mc/companion', (req, res) => {
 // ---- Outils du companion (firmware MeshCore récent) ---------------------------------------------------
 // Découverte des répéteurs entendus en direct : liaison mesurée dans les deux sens, sans mot de passe
 let decouverteMc = null; // { heure, liste }
+// Nom et infos des propriétaires (requête anonyme, demandée avec les régions aux répéteurs entendus en direct)
+const fProprietairesMc = path.join(path.dirname(config.fichierBase), 'meshcore-proprietaires.json');
+let proprietairesMc = {};
+try { proprietairesMc = lireJson(fProprietairesMc) || {}; } catch { /* aucun */ }
+const avecProprietaires = (d) => (d && d.liste ? { ...d, liste: d.liste.map((v) => (proprietairesMc[v.cle] ? { ...v, proprietaire: proprietairesMc[v.cle] } : v)) } : d);
 async function decouvrirMc() {
   const moi = companion.etat();
   const liste = await companion.decouvrirVoisins(15000);
@@ -2215,9 +2316,13 @@ async function decouvrirMc() {
 }
 app.post('/api/mc/companion/decouvrir', async (req, res) => {
   if (!exigerAdmin(req, res) || !exigerMc(res)) return;
-  try { res.json(await decouvrirMc()); } catch (e) { res.status(409).json({ erreur: e.message }); }
+  try {
+    const d = await decouvrirMc();
+    res.json(avecProprietaires(d));
+    if (!interrogationMc.enCours) interrogerRegionsMc().catch(() => {}); // régions et propriétaires, en arrière-plan
+  } catch (e) { res.status(409).json({ erreur: e.message }); }
 });
-app.get('/api/mc/companion/decouverte', (req, res) => { if (!exigerAdmin(req, res)) return; res.json(decouverteMc || { liste: null }); });
+app.get('/api/mc/companion/decouverte', (req, res) => { if (!exigerAdmin(req, res)) return; res.json(avecProprietaires(decouverteMc) || { liste: null }); });
 // Statistiques radio du companion (bruit, temps d'antenne) : relevées toutes les 15 min pour la courbe
 async function statsCompanionMc() {
   const s = await companion.statistiques();
@@ -2282,6 +2387,12 @@ async function interrogerRegionsMc(cles) {
       const r = await companion.regionsDeclarees({ cle: n.cle, nom: n.nom, role: n.role, lat: n.lat, lon: n.lon, horodatageAnnonce: n.horodatage_annonce });
       auditMc.noterDeclarees(k, r);
       interrogationMc.resultats.push({ cle: k, nom: n.nom, ok: true, ...r });
+      await new Promise((ok) => setTimeout(ok, 2000));
+      try {
+        const pr = await companion.proprietaire({ cle: n.cle, nom: n.nom, role: n.role, lat: n.lat, lon: n.lon, horodatageAnnonce: n.horodatage_annonce });
+        proprietairesMc[k] = { nom: pr.nom, infos: pr.infos, heure: Date.now() };
+        ecrireSur(fProprietairesMc, JSON.stringify(proprietairesMc));
+      } catch { /* firmware ancien ou pas de réponse : sans gravité */ }
     } catch (e) { interrogationMc.resultats.push({ cle: k, nom: n.nom, ok: false, erreur: e.message }); }
     interrogationMc.faits++;
     await new Promise((ok) => setTimeout(ok, 3000)); // laisser respirer le canal
@@ -2402,6 +2513,7 @@ app.post('/api/mc/reglages', (req, res) => {
   if (typeof b.republier === 'boolean') m.republier = b.republier;
   if (typeof b.actif === 'boolean') m.actif = b.actif;
   if (['departement', 'voisins', 'national'].includes(b.perimetre)) m.perimetre = b.perimetre;
+  if ([1, 2, 3].includes(Number(b.liensOctetsMin))) m.liensOctetsMin = Number(b.liensOctetsMin);
   if (typeof b.iataVoisins === 'string') m.iataVoisins = b.iataVoisins.split(/[,;\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9]{2,8}$/.test(x)).slice(0, 20);
   if (typeof b.canaux === 'string') {
     const l = b.canaux.split(/[;\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 20);
@@ -2433,7 +2545,7 @@ app.get('/api/sante-carte', (req, res) => {
 const serveur = http.createServer(app);
 
 // ---- WebSocket temps réel -------------------------------------------------
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 }); // les pages ne font qu'écouter : rien de gros à recevoir
 // Module branché sur le PC de l'utilisateur (Web Serial / Web Bluetooth) : la page relaie le flux Meshtastic
 const wssModule = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 // Modules reliés par une page : un « ping » toutes les 25 s garde la liaison ouverte à travers les proxys
@@ -2521,14 +2633,31 @@ function verPasserelle(m) {
   if (!passerelle || !m) return;
   try {
     if (m.genre === 'paquet' && m.premiere && m.port === 'texte' && m.texte && m.vers == null) passerelle.recevoir({ reseau: 'mt', canal: m.canal, de: m.de, nom: passerelle.nomMt(m.de), texte: m.texte });
-    else if (m.genre === 'mc-paquet' && m.premiere && m.texte && m.canal) passerelle.recevoir({ reseau: 'mc', canal: m.canal, de: null, nom: m.expediteur || null, texte: m.texte });
+    else if (m.genre === 'mc-paquet' && m.premiere && m.type === 'ADVERT' && m.de && passerelle.active()) {
+      // Annonce MeshCore d'un companion avec sa position : relayée si une liaison relaie les positions
+      const n = reseauMc.q.noeud.get(m.de);
+      if (n && n.role === 'companion' && n.lat != null) passerelle.recevoirPosition({ reseau: 'mc', de: n.cle, nom: n.nom || n.cle.slice(0, 8), lat: n.lat, lon: n.lon });
+    } else if (m.genre === 'mc-paquet' && m.premiere && m.texte && m.canal) passerelle.recevoir({ reseau: 'mc', canal: m.canal, de: null, nom: m.expediteur || null, texte: m.texte });
     else if (m.genre === 'mc-message' && m.sens === 'recu' && !m.direct && m.canal && m.texte) passerelle.recevoir({ reseau: 'mc', canal: m.canal, de: null, nom: m.nomDe || null, texte: m.texte });
+  } catch (e) { journal('[Passerelle]', e.message); }
+}
+// Paquets Meshtastic décodés (MQTT, module, agents) : positions et signalements pour la passerelle, si une liaison les relaie
+function versPasserelleRadio(evt) {
+  if (!passerelle || !evt || !passerelle.active()) return;
+  try {
+    const canal = evt.canal || evt.canalTopic, de = evt.de >>> 0;
+    if (evt.port === 'position' && evt.position && evt.position.lat != null && evt.diffusion) passerelle.recevoirPosition({ reseau: 'mt', canal, de, nom: passerelle.nomMt(de), lat: evt.position.lat, lon: evt.position.lon, alt: evt.position.alt });
+    else if (evt.port === 'waypoint' && evt.pointRepere && evt.pointRepere.lat != null) {
+      const w = evt.pointRepere;
+      passerelle.recevoirSignalement({ reseau: 'mt', canal, de, nom: passerelle.nomMt(de), idPoint: w.id, titre: String(w.nom || '').replace(/^\p{Extended_Pictographic}️?\s*/u, ''), details: w.description, icone: w.icone ? String.fromCodePoint(w.icone) : null, lat: w.lat, lon: w.lon, fin: !!(w.expire && w.expire * 1000 <= Date.now()) });
+    }
   } catch (e) { journal('[Passerelle]', e.message); }
 }
 function diffuser(message) {
   verPasserelle(message);
   // Vue publique : sans texte, positions des nœuds de particuliers arrondies
-  const pub = JSON.stringify(reseau.vueTrame(message.texte !== undefined ? { ...message, texte: undefined } : message, false));
+  const vue = message.genre === 'etat' && message.alertes ? { ...message, alertes: alertesPubliques(message.alertes) } : message;
+  const pub = JSON.stringify(reseau.vueTrame(vue.texte !== undefined ? { ...vue, texte: undefined } : vue, false));
   const adm = JSON.stringify(message);
   for (const ws of wss.clients) if (ws.readyState === 1) ws.send(ws.admin ? adm : pub);
 }
@@ -2605,7 +2734,8 @@ clientMqtt.on('message', (topic, message) => {
     if (!evt) return;
     if (evt.genre === 'erreur') { compteur.erreurs++; return; }
     if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } }
+    versPasserelleRadio(evt);
+    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } }
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuser({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
     if (sortie) { compteur.decodes++; diffuser(sortie); }
@@ -2617,10 +2747,38 @@ clientMqtt.on('message', (topic, message) => {
 
 // ---- Tâches périodiques ---------------------------------------------------
 let dernieresAlertes = [];
+// Alertes des services internes (adresses, messages d'erreur) réservées aux administrateurs
+function alertesPubliques(l) { return l.filter((a) => a.type !== 'service'); }
+// Services de fond en échec prolongé : visibles dans les alertes de la carte, pas seulement dans le journal du serveur
+const enEchecDepuis = {};
+function alertesServices() {
+  const l = [], t = Date.now();
+  const suivre = (cle, enEchec, delaiMin, message) => {
+    if (!enEchec) { delete enEchecDepuis[cle]; return; }
+    if (!enEchecDepuis[cle]) enEchecDepuis[cle] = t;
+    if (t - enEchecDepuis[cle] >= delaiMin * 60000) l.push({ cle: 'service:' + cle, type: 'service', niveau: 'attention', depuis: enEchecDepuis[cle], message });
+  };
+  if (typeof alertesOff !== 'undefined') {
+    const a = alertesOff.etat();
+    suivre('meteo', !!a.erreur, 60, `Vigilance Météo-France illisible : ${a.erreur} (alertes et diffusions LoRa en attente)`);
+  }
+  if (typeof archivePg !== 'undefined' && archivePg && archivePg.etat) {
+    const p = archivePg.etat();
+    suivre('postgres', !!(p && p.reglages && p.reglages.actif && p.erreur), 30, `Archive PostgreSQL : ${p && p.erreur}`);
+  }
+  if (typeof sourceMM !== 'undefined' && sourceMM && sourceMM.etat) {
+    const m = sourceMM.etat();
+    suivre('meshmonitor', !!(m && m.erreur), 30, `Source MeshMonitor injoignable : ${m && m.erreur}`);
+  }
+  // MQTT : déjà signalé par la pastille « En direct » du bandeau (et absent volontairement sur les cartes reliées à un module seul)
+  return l;
+}
 function rafraichirEtat() {
   dernieresAlertes = reseau.calculerAlertes();
   try { if (typeof equipes !== 'undefined') dernieresAlertes = [...dernieresAlertes, ...equipes.alertes((n) => { const r = reqNomSig.get(n >>> 0); return r && (r.nom_long || r.nom_court); })]; } catch { /* équipes pas encore prêtes */ }
   if (passerelle) { try { dernieresAlertes = [...dernieresAlertes, ...passerelle.alertes()]; } catch (e) { journal('[Passerelle]', e.message); } }
+  try { dernieresAlertes = [...dernieresAlertes, ...alertesServices()]; } catch (e) { journal('alertes des services :', e.message); }
+  try { if (!fonctionMasquee('feux')) dernieresAlertes = [...dernieresAlertes, ...feux.alertes()]; } catch (e) { if (!(e instanceof ReferenceError)) journal('[Feux]', e.message); } // pas encore créé au démarrage
   diffuser({ genre: 'etat', stats: reseau.statistiques(), alertes: dernieresAlertes, meshmonitor: typeof sourceMM !== 'undefined' && sourceMM ? sourceMM.etat() : null, radio: typeof sourceRadio !== 'undefined' && sourceRadio ? sourceRadio.etat() : null, ecoutes: resumeEcoutes() });
 }
 setInterval(rafraichirEtat, 30000);
@@ -2630,6 +2788,7 @@ function diffuserEtatMc() {
   const c = companion.etat();
   alertesMc = reseauMc.calculerAlertes({ administres: adminMc.memorises(), companion: { cible: c.cible || c.navigateur, connecte: c.connecte, nom: c.nom, cle: c.cle, erreur: c.erreur } });
   try { alertesMc = [...alertesMc, ...capteursMc.alertes(nomNoeudMc)]; } catch (e) { journal('alertes des capteurs :', e.message); }
+  try { if (typeof maintenanceMc !== 'undefined') alertesMc = [...alertesMc, ...maintenanceMc.alertes()]; } catch (e) { journal('alertes de maintenance :', e.message); }
   diffuser({ genre: 'mc-etat', ...etatMc(false) });
 }
 function planifierEtatMc() { if (!minuterieEtatMc) minuterieEtatMc = setTimeout(() => { minuterieEtatMc = null; diffuserEtatMc(); }, 15000); } // statuts d'observateurs fréquents : au plus toutes les 15 s
@@ -2766,7 +2925,7 @@ app.post('/api/mc/capteurs/:cle/reinitialiser', (req, res) => {
   try { res.json(capteursMc.reinitialiser(cle, req.body || {})); } catch (e) { res.status(400).json({ erreur: e.message }); }
 });
 const { creerMaintenanceMc } = require('./meshcore/maintenance');
-const maintenanceMc = creerMaintenanceMc({ config, reseauMc, adminMc, companion, journal });
+const maintenanceMc = creerMaintenanceMc({ config, reseauMc, adminMc, companion, journal, auditMc });
 app.get('/api/mc/maintenance', (req, res) => {
   if (!estGestion(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
   const r = maintenanceMc.etat();
@@ -2785,7 +2944,8 @@ app.post('/api/mc/maintenance/conformite', (req, res) => {
 const sourceRadio = creerSourceRadio(stockage, config, canaux, {
   integrerEvenement: (evt) => {
     if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } }
+    versPasserelleRadio(evt);
+    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } }
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuser({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
     if (sortie) { compteur.decodes++; diffuser({ ...sortie, viaRadio: true }); }
@@ -2803,7 +2963,8 @@ const ecoutes = creerEcoutes({
   fabriquerRadio: (m) => creerSourceRadio(stockage, config, canaux, {
     integrerEvenement: (evt) => {
       if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } }
+    versPasserelleRadio(evt);
+    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } }
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuser({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
       if (sortie) { compteur.decodes++; diffuser({ ...sortie, viaRadio: true }); }
@@ -2817,7 +2978,7 @@ ecoutes.demarrer();
 const administration = creerAdministration(sourceRadio, stockage);
 // ---- Équipes : canal chiffré par équipe, posé ou retiré à distance (administrateur) ----
 const reqPosEquipe = stockage.db.prepare('SELECT lat, lon, heure_position FROM noeuds WHERE num = ?');
-const equipes = require('./equipes').creerEquipes({ config, administration, journal, positionDe: (num) => { try { const r = reqPosEquipe.get(num >>> 0); return r && r.lat != null ? { lat: r.lat, lon: r.lon, heure: r.heure_position || 0 } : null; } catch { return null; } } });
+const equipes = require('./equipes').creerEquipes({ config, administration, journal, diffuser, nomDe: (n) => { const r = reqNomSig.get(n >>> 0); return r && (r.nom_long || r.nom_court); }, positionDe: (num) => { try { const r = reqPosEquipe.get(num >>> 0); return r && r.lat != null ? { lat: r.lat, lon: r.lon, heure: r.heure_position || 0 } : null; } catch { return null; } } });
 const routeEquipe = (f) => (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
   try { res.set('Cache-Control', 'no-store').json(f(req, req.body || {}, nomCompte(utilisateur(req)))); } catch (e) { res.status(400).json({ erreur: e.message }); }
@@ -2827,6 +2988,8 @@ app.post('/api/equipes', routeEquipe((req, b, a) => equipes.creer(b, a)));
 app.patch('/api/equipes/:id', routeEquipe((req, b) => equipes.modifier(req.params.id, b)));
 app.post('/api/equipes/:id/membres', routeEquipe((req, b, a) => equipes.membres(req.params.id, b, a)));
 app.post('/api/equipes/:id/reappliquer', routeEquipe((req, b, a) => equipes.reappliquer(req.params.id, a)));
+app.post('/api/equipes/:id/recherche', routeEquipe((req, b, a) => equipes.recherche(req.params.id, b, a)));
+app.post('/api/equipes/:id/sos/:sid', routeEquipe((req, b, a) => equipes.prendreSos(req.params.id, req.params.sid, a)));
 app.post('/api/equipes/:id/nouvelle-cle', routeEquipe((req, b, a) => {
   if (b.confirmation !== 'NOUVELLE CLE') throw new Error('Confirmation manquante : tapez « NOUVELLE CLE »');
   return equipes.nouvelleCle(req.params.id, a);
@@ -2898,6 +3061,9 @@ app.get('/api/diagnostic', async (req, res) => {
   const l = [];
   const ajouter = (groupe, etat, titre, detail, action) => l.push({ groupe, etat, titre, detail: detail || '', action: action || null });
   const t = Date.now();
+  // Carte MeshCore seule : vue MeshCore choisie, ou aucun paquet Meshtastic depuis 7 jours et aucun module Meshtastic
+  let mtAbsent = req.query.reseau === 'meshcore';
+  if (!mtAbsent) { try { mtAbsent = !sourceRadio.infos().connecte && !stockage.db.prepare('SELECT 1 FROM paquets WHERE heure >= ? LIMIT 1').get(t - 7 * 86400000); } catch { /* table absente */ } }
   // MQTT
   const mqttOk = !!statsMqtt.depuis;
   if (!config.mqtt.url) ajouter('MQTT', 'info', 'Aucun serveur MQTT réglé', 'La carte ne reçoit que ce que captent ses modules.', 'mqtt');
@@ -2905,7 +3071,8 @@ app.get('/api/diagnostic', async (req, res) => {
   else {
     ajouter('MQTT', 'ok', 'Serveur MQTT connecté', `depuis ${Math.round((t - statsMqtt.depuis) / 60000)} min`);
     const age = statsMqtt.dernierMessage ? t - statsMqtt.dernierMessage : null;
-    if (age == null || age > 15 * 60000) ajouter('MQTT', 'attention', 'Aucun message Meshtastic reçu depuis 15 min', `La carte écoute ${config.mqtt.racine}/#. Vérifiez le sujet racine, et que des passerelles publient sur ce serveur (uplink activé sur leurs canaux).`, 'mqtt');
+    if ((age == null || age > 15 * 60000) && mtAbsent) ajouter('MQTT', 'info', 'Pas de trafic Meshtastic', 'Normal si cette carte ne suit que MeshCore.');
+    else if (age == null || age > 15 * 60000) ajouter('MQTT', 'attention', 'Aucun message Meshtastic reçu depuis 15 min', `La carte écoute ${config.mqtt.racine}/#. Vérifiez le sujet racine, et que des passerelles publient sur ce serveur (uplink activé sur leurs canaux).`, 'mqtt');
     else ajouter('MQTT', 'ok', 'Des messages Meshtastic arrivent', `dernier il y a ${Math.round(age / 1000)} s`);
   }
   // Canaux Meshtastic : part de paquets non déchiffrés sur 1 h
@@ -2919,7 +3086,7 @@ app.get('/api/diagnostic', async (req, res) => {
   } catch { /* table absente */ }
   // Module Meshtastic
   const ri = sourceRadio.infos(), re = sourceRadio.etat();
-  if (ri.connecte) ajouter('Module Meshtastic', 'ok', `Module relié : ${re.nomLocal || ''}`, `canaux ${(ri.canaux || []).map((c) => c.nom || c.index).join(', ')}`);
+  if (mtAbsent && !ri.connecte) { /* carte MeshCore seule : rien à signaler côté Meshtastic */ } else if (ri.connecte) ajouter('Module Meshtastic', 'ok', `Module relié : ${re.nomLocal || ''}`, `canaux ${(ri.canaux || []).map((c) => c.nom || c.index).join(', ')}`);
   else ajouter('Module Meshtastic', 'info', 'Aucun module Meshtastic relié', 'Sans module : pas d’envoi de message, de signalement ni de programmation à distance. La lecture par MQTT fonctionne quand même.', 'module');
   // MeshCore
   if (config.meshcore.actif) {
@@ -2945,6 +3112,15 @@ app.get('/api/diagnostic', async (req, res) => {
       }
     }
   }
+  // Feux actifs : NASA FIRMS (sans compte) et Meteosat (compte LSA SAF gratuit)
+  if (!fonctionMasquee('feux')) {
+    const fe = feux.etat(1);
+    if (fe.erreur && !fe.maj) ajouter('Feux actifs', 'attention', 'NASA FIRMS illisible', fe.erreur);
+    else ajouter('Feux actifs', 'ok', 'NASA FIRMS lu', fe.maj ? new Date(fe.maj).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }) : 'première lecture en cours');
+    if (!fe.meteosat.actif) ajouter('Feux actifs', 'info', 'Meteosat non configuré', 'Détection toutes les 15 min : créez un compte gratuit sur mokey.lsasvcs.ipma.pt (LSA SAF, EUMETSAT), puis mettez LSASAF_UTILISATEUR et LSASAF_MOT_DE_PASSE dans le .env.');
+    else if (fe.meteosat.erreur) ajouter('Feux actifs', 'attention', 'Meteosat illisible', fe.meteosat.erreur);
+    else ajouter('Feux actifs', 'ok', 'Meteosat lu', fe.meteosat.dernierFichier ? `dernière image ${fe.meteosat.dernierFichier.slice(8, 10)}:${fe.meteosat.dernierFichier.slice(10, 12)} UTC` : 'première lecture en cours');
+  }
   // Mise à jour
   const iv = infosVersion();
   if (iv.majDisponible) ajouter('Mise à jour', 'attention', `Version ${iv.derniere} disponible (installée : ${iv.version})`, '', 'maj'); else ajouter('Mise à jour', 'ok', `Version ${iv.version}${iv.derniere ? ', à jour' : ''}`, majDispo.erreur ? 'GitHub injoignable : ' + majDispo.erreur : '');
@@ -2962,7 +3138,7 @@ app.get('/api/sauvegarde-complete', (req, res) => {
   try { fs.unlinkSync(copie); } catch { /* absente */ }
   try { stockage.db.exec(`VACUUM INTO '${copie.replace(/'/g, "''")}'`); } catch (e) { return res.status(500).json({ erreur: 'copie de la base impossible : ' + e.message }); }
   const base = path.basename(config.fichierBase);
-  const exclus = ['mnt*.bin', 'mnt*.json', 'sommets-osm*.json', 'acces-sommets*.json', 'communes*.json', 'realisme*.json', 'firmware', 'sauvegardes', '*.part', base, base + '-wal', base + '-shm', 'maj-jeton.txt'];
+  const exclus = ['mnt*.bin', 'mnt*.json', 'sommets-osm*.json', 'acces-sommets*.json', 'communes*.json', 'realisme*.json', 'firmware', 'sauvegardes', '*.part', base, base + '-wal', base + '-shm', 'maj-jeton.txt', 'restauration-en-attente', 'avant-restauration-*', 'restauration.tar.gz', '*.tmp', '*.bak'];
   journal(`[Sauvegarde] sauvegarde complète téléchargée par ${utilisateur(req).identifiant}`);
   res.set('Content-Type', 'application/gzip').set('Content-Disposition', `attachment; filename="carte-live-complete-${new Date().toISOString().slice(0, 10)}.tar.gz"`);
   const { spawn } = require('child_process');
@@ -2972,16 +3148,51 @@ app.get('/api/sauvegarde-complete', (req, res) => {
   t.stderr.on('data', (x) => journal('[Sauvegarde]', String(x).trim()));
   t.on('close', () => { try { fs.unlinkSync(copie); } catch { /* déjà */ } });
 });
+let restaurationEnCours = false;
+// Restauration d'une sauvegarde complète envoyée depuis la page (administrateur, ou pendant l'installation sur un nouveau serveur)
+app.post('/api/restauration-complete', (req, res) => {
+  const enInstallation = comptes.installationRequise() && (ipPrivee(req) || (() => {
+    const code = String(req.query.code || '');
+    const attendu = config.admin.motDePasse || codeInstallationAuto;
+    if (!code || !attendu) return false;
+    const a = crypto.createHash('sha256').update(config.admin.motDePasse ? code : code.replace(/[\s-]/g, '').toUpperCase()).digest(), c = crypto.createHash('sha256').update(String(attendu)).digest();
+    return crypto.timingSafeEqual(a, c);
+  })());
+  if (!estAdmin(req) && !enInstallation) return res.status(401).json({ erreur: comptes.installationRequise() ? 'Saisissez d’abord le code d’installation' : 'Connexion admin requise' });
+  if (!estAdmin(req) && limiter(req.ip)) return res.status(429).json({ erreur: 'Trop de tentatives, réessayez dans 15 minutes' });
+  const d = path.dirname(config.fichierBase), f = path.join(d, 'restauration.tar.gz');
+  if (restaurationEnCours) return res.status(409).json({ erreur: 'Une restauration est déjà en cours' });
+  restaurationEnCours = true;
+  res.on('close', () => { restaurationEnCours = false; });
+  const sortie = fs.createWriteStream(f + '.part');
+  let taille = 0, fini = false;
+  const echec = (code, m) => { if (fini) return; fini = true; try { sortie.destroy(); fs.unlinkSync(f + '.part'); } catch { /* déjà */ } res.status(code).json({ erreur: m }); };
+  req.on('data', (b) => { taille += b.length; if (taille > 8 * 1024 ** 3) { req.destroy(); echec(413, 'fichier trop gros (8 Go au plus)'); } });
+  req.pipe(sortie);
+  req.on('error', () => echec(400, 'envoi interrompu'));
+  sortie.on('finish', () => {
+    if (fini) return;
+    fini = true;
+    try {
+      fs.renameSync(f + '.part', f);
+      const r = require('./restauration').preparer(f, d, path.basename(config.fichierBase));
+      fs.unlinkSync(f);
+      journal(`[Restauration] sauvegarde complète reçue (${Math.round(taille / 1048576)} Mo, ${r.fichiers} fichiers) par ${estAdmin(req) ? utilisateur(req).identifiant : 'l’installation'} : redémarrage`);
+      res.json({ ok: true, fichiers: r.fichiers, redemarrage: true });
+      setTimeout(() => process.exit(0), 1500); // Docker relance le conteneur, qui applique la restauration
+    } catch (e) { try { fs.unlinkSync(f); } catch { /* déjà */ } res.status(400).json({ erreur: e.message }); }
+  });
+});
 // ---- Mise à jour automatique la nuit (option, administrateur) ----
 const fMajAuto = path.join(path.dirname(config.fichierBase), 'maj-auto.json');
 let majAuto = { actif: false, heure: 4 };
-try { majAuto = { ...majAuto, ...JSON.parse(fs.readFileSync(fMajAuto, 'utf8')) }; } catch { /* défaut */ }
+try { majAuto = { ...majAuto, ...lireJson(fMajAuto) }; } catch { /* défaut */ }
 app.get('/api/maj/auto', (req, res) => { if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' }); res.json(majAuto); });
 app.post('/api/maj/auto', (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
   const b = req.body || {};
   majAuto = { actif: !!b.actif, heure: Math.min(23, Math.max(0, Number.isFinite(Number(b.heure)) ? Math.round(Number(b.heure)) : 4)) };
-  try { fs.writeFileSync(fMajAuto, JSON.stringify(majAuto)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
+  try { ecrireSur(fMajAuto, JSON.stringify(majAuto)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
   journal(`[Mise à jour] automatique ${majAuto.actif ? 'activée à ' + majAuto.heure + ' h' : 'désactivée'} par ${utilisateur(req).identifiant}`);
   res.json(majAuto);
 });
@@ -3002,6 +3213,92 @@ const signalements = require('./signalements').creerSignalements({
   journal, diffuser,
   nomNoeud: (num) => { try { const r = reqNomSig.get(num >>> 0); return r && (r.nom_long || r.nom_court); } catch { return null; } },
 });
+// ---- Alertes officielles : vigilance Météo-France (MeteoAlarm), Vigipirate, FR-Alert relayées ----------------
+// Fonctions masquées (ne garder par exemple que la vigilance météo) : FONCTIONS_MASQUEES dans le .env donne la valeur
+// de départ, l'administrateur la change ensuite dans Réglages (fichier fonctions-masquees.json, sans redémarrage)
+const FONCTIONS_MASQUABLES = ['signalements', 'vigipirate', 'fr-alert', 'main-courante', 'bipper', 'feux'];
+const fFonctionsMasquees = path.join(path.dirname(config.fichierBase), 'fonctions-masquees.json');
+let fonctionsMasquees = new Set(String(process.env.FONCTIONS_MASQUEES || '').split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => FONCTIONS_MASQUABLES.includes(x)));
+try { fonctionsMasquees = new Set(lireJson(fFonctionsMasquees).filter((x) => FONCTIONS_MASQUABLES.includes(x))); } catch { /* valeur du .env */ }
+const fonctionMasquee = (f) => fonctionsMasquees.has(f);
+app.post('/api/fonctions-masquees', (req, res) => {
+  if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
+  const l = Array.isArray((req.body || {}).masquees) ? req.body.masquees.filter((x) => FONCTIONS_MASQUABLES.includes(x)) : null;
+  if (!l) return res.status(400).json({ erreur: 'Liste attendue' });
+  fonctionsMasquees = new Set(l);
+  try { ecrireSur(fFonctionsMasquees, JSON.stringify([...fonctionsMasquees])); } catch (e) { return res.status(500).json({ erreur: e.message }); }
+  journal(`Fonctions masquées par ${nomCompte(utilisateur(req))} : ${l.join(', ') || 'aucune'}`);
+  diffuser({ genre: 'fonctions-masquees', masquees: [...fonctionsMasquees] });
+  res.json({ masquees: [...fonctionsMasquees] });
+});
+const alertesOff = require('./alertes-officielles').creerAlertesOfficielles({
+  config, journal, diffuser,
+  // Départements suivis : ceux choisis par l'administrateur, sinon celui de la carte
+  departementsSuivis: (codes) => {
+    const l = (codes && codes.length ? codes : [String(config.departement.code)]).map((c) => listeDepartements.find((d) => d.code === c) || (c === String(config.departement.code) ? { code: c, nom: config.departement.nom } : null)).filter(Boolean);
+    return l;
+  },
+  envoyerMc: async (nomCanal, texte) => {
+    if (!config.meshcore.actif) throw new Error('MeshCore désactivé');
+    const sans = (t) => String(t || '').toLowerCase().replace(/^#/, '');
+    const c = companion.canaux().find((x) => sans(x.nom) === sans(nomCanal));
+    if (!c) throw new Error(`canal « ${nomCanal} » absent du compagnon`);
+    let b = Buffer.from(texte, 'utf8');
+    if (b.length > 130) texte = b.subarray(0, 127).toString('utf8').replace(/\uFFFD+$/, '') + '…';
+    await companion.envoyerCanal(c.index, texte);
+  },
+  envoyer: async (nomCanal, texte) => {
+    const i = sourceRadio.infos();
+    if (!i.connecte) throw new Error('module radio non connecté');
+    const c = (i.canaux || []).find((x) => String(x.nom).toLowerCase() === String(nomCanal).toLowerCase());
+    if (!c) throw new Error(`canal « ${nomCanal} » absent du module`);
+    let b = Buffer.from(texte, 'utf8');
+    if (b.length > 200) { b = b.subarray(0, 197); texte = b.toString('utf8').replace(/\uFFFD+$/, '') + '…'; }
+    return administration.envoyerTexte({ texte, canal: c.index }, 'alertes');
+  },
+});
+app.get('/api/alertes-officielles', (req, res) => res.set('Cache-Control', 'no-store').json({ ...alertesOff.etat(), niveauxVigipirate: alertesOff.NIVEAUX_VIGIPIRATE, ...(estAdmin(req) ? { departements: listeDepartements.map((d) => ({ code: d.code, nom: d.nom })), voisins: ((zoneVoisins() || {}).departements || []).map((d) => d.code), departementCarte: String(config.departement.code), canauxMc: config.meshcore.actif ? companion.canaux().map((c) => c.nom) : [] } : {}),
+  // Canaux proposés pour l'envoi à la demande (gestionnaires) : ceux du companion MeshCore et du module Meshtastic
+  ...(estGestion(req) ? { envoi: { canauxMc: config.meshcore.actif ? companion.canaux().map((c) => c.nom).filter(Boolean) : [], canauxMt: (() => { try { const i = sourceRadio.infos(); return i.connecte ? (i.canaux || []).map((c) => c.nom).filter(Boolean) : []; } catch { return []; } })() } } : {}),
+  fonctionsMasquees: [...fonctionsMasquees] }));
+// ---- Feux actifs vus par satellite (NASA FIRMS) : couche de la carte, alertes sur la zone, envoi radio à la demande ----
+const feux = require('./feux').creerFeux({ config, journal, diffuser });
+app.get('/api/feux', (req, res) => {
+  if (fonctionMasquee('feux')) return res.status(404).json({ erreur: 'Fonction masquée par l’administrateur' });
+  res.set('Cache-Control', 'no-store').json(feux.etat(Number(req.query.heures) || 24));
+});
+app.post('/api/feux/envoyer', async (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  const b = req.body || {};
+  try { res.json(await alertesOff.envoyerTexte(feux.texteAlerte(String(b.cle || '')), { canaux: Array.isArray(b.canaux) ? b.canaux : [], canalMc: String(b.canalMc || '').slice(0, 32) }, u.indicatif || u.identifiant)); } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+app.post('/api/alertes-officielles/envoyer', async (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  const b = req.body || {};
+  try { res.json(await alertesOff.envoyerVigilance({ dep: String(b.dep || ''), phenomene: String(b.phenomene || ''), canaux: Array.isArray(b.canaux) ? b.canaux : [], canalMc: String(b.canalMc || '').slice(0, 32) }, u.indicatif || u.identifiant)); } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+app.post('/api/alertes-officielles/reglages', (req, res) => {
+  if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
+  const r = alertesOff.regler(req.body || {});
+  res.json(r);
+});
+app.post('/api/vigipirate', async (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  try { const r = await alertesOff.vigipirate((req.body || {}).niveau || null, u.indicatif || u.identifiant, !!(req.body || {}).annoncer); res.json(r); } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+app.post('/api/fr-alert', async (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  try { const r = await alertesOff.frAlert(req.body || {}, u.indicatif || u.identifiant); res.json(r); } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
+app.post('/api/fr-alert/:id/fin', (req, res) => {
+  const u = utilisateur(req);
+  if (!u || !estGestion(req)) return res.status(401).json({ erreur: 'Connexion gestionnaire requise' });
+  try { res.json(alertesOff.finFrAlert(String(req.params.id), u.indicatif || u.identifiant)); } catch (e) { res.status(400).json({ erreur: e.message }); }
+});
 app.get('/api/signalements', (req, res) => {
   if (!estMembre(req)) return res.status(401).json({ erreur: 'Connexion requise' });
   res.set('Cache-Control', 'no-store').json({ signalements: signalements.lister(), ...signalements.canaux(), alertes: signalements.listerAlertes(), genresAlerte: signalements.GENRES });
@@ -3018,13 +3315,16 @@ app.get('/api/signalements/publics', (req, res) => {
 });
 // Main courante : signalements des 7 derniers jours, page imprimable (membres)
 app.get('/main-courante', (req, res) => {
+  if (fonctionMasquee('main-courante')) return res.status(404).send('Main courante désactivée sur cette carte');
   if (!estMembre(req)) return res.status(401).send('Connexion requise');
   const e = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const h = (t) => new Date(t).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const lignes = [];
+  const { versDfci } = require('../public/dfci.js');
+  const pos = (x) => `${x.lat.toFixed(5)}, ${x.lon.toFixed(5)}${versDfci(x.lat, x.lon) ? '<br>DFCI ' + versDfci(x.lat, x.lon) : ''}`;
   for (const x of signalements.lister()) {
-    lignes.push([x.cree, `${x.icone} ${e(x.titre)}`, e(x.details), `${x.lat.toFixed(5)}, ${x.lon.toFixed(5)}`, e(x.auteur) + (x.source === 'radio' ? ' (reçu par radio)' : ''), [...(x.envois.mt || []).map((v) => `Meshtastic canal ${v.canal} : ${v.statut === 'envoye' ? 'envoyé' : 'échec'}`), x.envois.mc ? `MeshCore : ${x.envois.mc.statut === 'envoye' ? 'envoyé' : 'échec'}` : ''].filter(Boolean).join(' · ')]);
-    if (x.fin) lignes.push([x.fin, `✅ Fin : ${e(x.titre)}`, '', `${x.lat.toFixed(5)}, ${x.lon.toFixed(5)}`, e(x.finPar || ''), '']);
+    lignes.push([x.cree, `${x.icone} ${e(x.titre)}`, e(x.details), pos(x), e(x.auteur) + (x.source === 'radio' ? ' (reçu par radio)' : ''), [...(x.envois.mt || []).map((v) => `Meshtastic canal ${v.canal} : ${v.statut === 'envoye' ? 'envoyé' : 'échec'}`), x.envois.mc ? `MeshCore : ${x.envois.mc.statut === 'envoye' ? 'envoyé' : 'échec'}` : ''].filter(Boolean).join(' · ')]);
+    if (x.fin) lignes.push([x.fin, `✅ Fin : ${e(x.titre)}`, '', pos(x), e(x.finPar || ''), '']);
   }
   lignes.sort((a, b) => a[0] - b[0]);
   res.set('Cache-Control', 'no-store').send(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>Main courante · ${e(config.carte.titre)}</title>

@@ -8,6 +8,8 @@
 
 The radio frequency used for the computations is set with `RADIO_FREQ_MHZ` in the `.env` (`906.875` in the US, `869.525` in Europe…). Town populations come from OpenStreetMap outside France.
 
+![Current network coverage, computed from terrain](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/en-couverture.jpg)
+
 - **Current network coverage**: area served by the detected relays, share of the department, what each relay alone covers.
 - **Point coverage**: click on the map or on a node; adjustable antenna height. Points near another department automatically use its terrain.
 - **Cover one or more points**: sites able to serve a place, or 2 to 5 places with a single relay.

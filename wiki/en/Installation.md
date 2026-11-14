@@ -57,6 +57,8 @@ Each visitor can then change the base map and layers in *Layers ▾*. Their choi
 
 > ⚠️ Check the spelling of the broker address: a typo such as `mqttexample.org` instead of `mqtt.example.org` gives a looping `getaddrinfo ENOTFOUND` error in the log.
 
+**Log language**: `LANGUE=en` makes the server log (`docker compose logs`) English; the interface follows each browser's language. `.env` values can be written in French or English (`oui`/`yes`, `non`/`no`, `CARTE_FOND=sombre` or `dark`, `CARTE_RESEAUX=les-deux` or `both`, `MESHCORE_PERIMETRE=voisins` or `neighbours`).
+
 ## 3. The setup wizard
 
 Open `http://SERVER_IP:8095`. The wizard creates the **admin account** and sets the department, the broker and the channels.
@@ -112,7 +114,7 @@ docker compose pull && docker compose up -d
 
 Data (database, accounts, settings, terrain cache) is in the `donnees` volume: back it up.
 
-**Full backup** (*Settings › 📦 Full backup*, administrator): a single `carte-live-complete-DATE.tar.gz` file with the database, settings, accounts, teams and reports (terrain is not included: it is downloaded again). To change server: install the map on the new one, stop it (`docker compose stop carte-live`), extract the file into its data folder (`tar -xzf carte-live-complete-DATE.tar.gz -C /path/of/the/volume`), then start it again (`docker compose up -d`). The file contains accounts and channel keys: keep it somewhere safe. The map also backs up its settings every night (*Manage › Backups*).
+**Full backup** (*Settings › 📦 Full backup*, administrator): a single `carte-live-complete-DATE.tar.gz` file with the database, settings, accounts, teams and reports (terrain is not included: it is downloaded again). To change server: install the map on the new one, then, right in the setup wizard, click **♻️ Restore a full backup…** and pick the file (on a map that is already set up: *Settings › ♻️ Restore a full backup*, administrator). The archive is checked, the map restarts and takes everything back: database, settings, accounts. The replaced state is kept in the data folder, under `avant-restauration-DATE` (delete it by hand once all is well). The command line still works: stop the map (`docker compose stop carte-live`), extract the file into its data folder (`tar -xzf carte-live-complete-DATE.tar.gz -C /path/of/the/volume`), then start it again (`docker compose up -d`). The file contains accounts and channel keys: keep it somewhere safe. The map also backs up its settings every night (*Manage › Backups*).
 
 Avoid updating during a running remote programming job: it resumes after the restart, but the current request starts again from scratch.
 

@@ -6,6 +6,7 @@
 // Les opérations sont des tâches (une seule à la fois, la radio étant partagée), suivies en direct par la page.
 
 const fs = require('fs');
+const { ecrireSur, lireJson } = require('../fichiers');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -94,10 +95,10 @@ function creerAdministrationMc(config, companion, reseauMc, journal, surFin = ()
   const dossier = path.dirname(config.fichierBase);
   const fMdp = path.join(dossier, 'meshcore-admin.json');
   const fLectures = path.join(dossier, 'meshcore-lectures.json');
-  const lire = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } };
+  const lire = (f) => { try { return lireJson(f); } catch { return {}; } };
   const motsDePasse = lire(fMdp); // clé -> mot de passe (fichier lisible seulement par le service)
   const lectures = lire(fLectures); // clé -> { heure, valeurs, infos, statut, voisins }
-  const ecrire = (f, o) => { try { fs.writeFileSync(f, JSON.stringify(o), { mode: 0o600 }); } catch (e) { journal('enregistrement impossible :', e.message); } };
+  const ecrire = (f, o) => { try { ecrireSur(f, JSON.stringify(o), { mode: 0o600 }); } catch (e) { journal('enregistrement impossible :', e.message); } };
 
   const taches = new Map();
   const file = [];
@@ -185,7 +186,7 @@ function creerAdministrationMc(config, companion, reseauMc, journal, surFin = ()
   }
   function restaurerTaches() {
     let l = [];
-    try { l = JSON.parse(fs.readFileSync(fTaches, 'utf8')); } catch { return; }
+    try { l = lireJson(fTaches); } catch { return; }
     const aReprendre = [];
     for (const t of l) {
       t.motDePasse = null;
@@ -226,6 +227,9 @@ function creerAdministrationMc(config, companion, reseauMc, journal, surFin = ()
 
   async function seConnecter(t, n) {
     const mdp = t.motDePasse || motsDePasse[n.cle];
+    // Companion (firmware 1.18+) : pas de connexion, l'accès passe par la permission « commande à distance »
+    // que son propriétaire accorde à notre contact dans l'application MeshCore.
+    if (n.role === 'companion' && !mdp) { etape(t, n.cle, 'companion : accès par la permission « commande à distance » accordée à notre contact (firmware 1.18+), sans mot de passe'); return { admin: true }; }
     if (!mdp && mdp !== '') throw new Error('mot de passe admin inconnu : saisissez-le');
     etape(t, n.cle, 'connexion…');
     const r = await avecReprise(() => companion.connexion(n, mdp));
@@ -458,8 +462,11 @@ function creerAdministrationMc(config, companion, reseauMc, journal, surFin = ()
         }
         t.resultats[n.cle] = { ...(t.resultats[n.cle] || {}), ok: true, heure: Date.now() };
       } catch (e) {
-        etape(t, n.cle, e.message, false);
-        t.resultats[n.cle] = { ...(t.resultats[n.cle] || {}), ok: false, erreur: e.message, heure: Date.now(), definitif: /refusé|inconnu|invalide|mot de passe|non géré/i.test(e.message), echecs: ((t.resultats[n.cle] || {}).echecs || 0) + 1 };
+        // Le nom et le début de la clé dans le message : on sait tout de suite quel répéteur ne répond pas
+        const qui = `${n.nom || 'nœud'} [${n.cle.slice(0, 4).toUpperCase()}]`;
+        const msg = e.message.includes(n.cle.slice(0, 4).toUpperCase()) ? e.message : `${qui} : ${e.message}`;
+        etape(t, n.cle, msg, false);
+        t.resultats[n.cle] = { ...(t.resultats[n.cle] || {}), ok: false, erreur: msg, heure: Date.now(), definitif: /refusé|inconnu|invalide|mot de passe|non géré/i.test(e.message), echecs: ((t.resultats[n.cle] || {}).echecs || 0) + 1 };
         // Vérification : sans la référence, inutile de continuer
         if (t.type === 'verifier' && cle === t.cles[0]) { t.arret = true; etape(t, null, 'référence illisible : vérification arrêtée', false); }
       }
@@ -557,7 +564,7 @@ function creerAdministrationMc(config, companion, reseauMc, journal, surFin = ()
   // ---- Modèles de réglages MeshCore (créés depuis un répéteur ou à la main), appliqués à plusieurs nœuds ----
   const fModeles = path.join(dossier, 'meshcore-modeles.json');
   let modeles = [];
-  try { modeles = JSON.parse(fs.readFileSync(fModeles, 'utf8')); } catch {
+  try { modeles = lireJson(fModeles); } catch {
     // Premier lancement : configuration de base d'un répéteur du réseau français (régions eu › fr › fr-ara › fr-43)
     modeles = [{
       id: 'base-repeteur-fr43', nom: 'Répéteur de base (FR-43)', description: 'Configuration de base d’un répéteur : annonces, AGC, accusés, cycle d’émission, hachages 2 octets, détection des boucles, sauts limités hors région, régions eu › fr › fr-ara › fr-43.',

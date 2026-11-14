@@ -36,7 +36,7 @@ const etat = {
   coucheLiens: null,
   alertes: [],
   stats: null,
-  couches: { rf: true, voisinage: true, traceroute: true, inactifs: false, animations: true, sommets: true, federation: true, releves: true, routiers: false },
+  couches: { rf: true, voisinage: true, traceroute: true, inactifs: false, animations: true, sommets: true, federation: true, releves: true, routiers: false, dfci: false, radar: false, feux: false },
   filtresPorts: new Set(Object.keys(PORTS)),
   selection: null,
   trajet: null,
@@ -100,6 +100,7 @@ function blocCoords(lat, lon, opts = {}) {
   return `<div class="coords">
     <div class="coords-l"><span>GPS</span><b class="mono">${dec}</b><button class="mini" data-copier="${dec}" title="Copier les coordonnées décimales">Copier</button></div>
     <div class="coords-l"><span>DMS</span><b class="mono">${sexa}</b><button class="mini" data-copier="${sexa}" title="Copier en degrés, minutes, secondes">Copier</button></div>
+    ${(() => { const d = window.DFCI && DFCI.versDfci(lat, lon); return d ? `<div class="coords-l"><span title="Carroyage DFCI (carreau de 2 km et zone 1 à 5)">DFCI</span><b class="mono">${d}</b><button class="mini" data-copier="${d}" title="Copier le code DFCI">Copier</button></div>` : ''; })()}
     <div class="coords-l liens-carto">${opts.alt != null ? `<span>Alt.</span><b>${Math.round(opts.alt)} m</b>` : ''}
       <a href="https://cartes.gouv.fr/explorer-les-cartes/?c=${lon.toFixed(5)},${lat.toFixed(5)}&z=16&l=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2$GEOPORTAIL:OGC:WMTS(1;1;0)&permalink=yes" target="_blank" rel="noopener" title="Carte IGN sur cartes.gouv.fr (remplace le Géoportail)">cartes.gouv.fr</a>
       <a href="https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lon.toFixed(6)}" target="_blank" rel="noopener">Google Maps</a>
@@ -186,6 +187,29 @@ function initCarte() {
         .addTo(surcouches['Points de repère']);
     }
   }).catch(() => {});
+  // Étiquettes des repères sans chevauchement : après chaque déplacement, un nom qui couvrirait un nœud ou un autre
+  // nom est masqué (les repères arrivent du plus au moins important) ; il réapparaît en zoomant
+  let minuterieEtiquettes = null;
+  const desencombrer = () => {
+    clearTimeout(minuterieEtiquettes);
+    minuterieEtiquettes = setTimeout(() => {
+      const cont = carte.getContainer(), occupes = [], marge = 3;
+      const boite = cont.getBoundingClientRect();
+      for (const el of cont.querySelectorAll('.leaflet-marker-pane .leaflet-marker-icon, .leaflet-marker-pane .leaflet-tooltip, .leaflet-tooltip-pane .leaflet-tooltip')) {
+        const r = el.getBoundingClientRect();
+        if (r.width && r.right > boite.left && r.left < boite.right && r.bottom > boite.top && r.top < boite.bottom) occupes.push(r);
+      }
+      const touche = (r) => occupes.some((o) => r.left < o.right + marge && r.right > o.left - marge && r.top < o.bottom + marge && r.bottom > o.top - marge);
+      for (const sp of cont.querySelectorAll('.repere span')) {
+        sp.style.visibility = '';
+        const r = sp.getBoundingClientRect();
+        if (!r.width) continue;
+        if (touche(r)) sp.style.visibility = 'hidden'; else occupes.push(r);
+      }
+    }, 120);
+  };
+  carte.on('zoomend moveend overlayadd', desencombrer);
+  window.desencombrerEtiquettes = desencombrer;
   let surcouchesMemo = null;
   try { surcouchesMemo = JSON.parse(localStorage.getItem('gaulix_surcouches') || 'null'); } catch { /* idem */ }
   if (!surcouchesMemo) surcouches['Points de repère'].addTo(carte);
@@ -201,7 +225,7 @@ function initCarte() {
   majFondSombre();
   for (const n of surcouchesMemo || []) if (surcouches[n]) surcouches[n].addTo(carte);
   carte.attributionControl.addAttribution('Meshtastic® est une marque de Meshtastic LLC');
-  carte.attributionControl.setPrefix('Carte live par F4GLD · <a href="https://www.helloasso.com/associations/radioclub-du-velay/formulaires/2" target="_blank" rel="noopener" title="Soutenir le projet (don au Radio-club du Velay)">♥ soutenir</a> · <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+  carte.attributionControl.setPrefix('Carte live par F4GLD · <a href="https://www.helloasso.com/associations/radioclub-du-velay/formulaires/2" target="_blank" rel="noopener" title="Soutenir le projet (don au Radio-club du Velay)">♥ Soutenir le projet</a> · <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
   // Choix du fond et des surcouches dans le menu « Couches »
   const menu = document.querySelector('.menu-couches .menu');
   menu.insertAdjacentHTML('afterbegin', `<div class="titre-menu">Fond de carte</div>${Object.keys(fonds).map((n) => `<button data-fond="${n}" class="${n === choix ? 'actif' : ''}">${n}</button>`).join('')}
@@ -306,6 +330,7 @@ function regrouper(liste, couche, cle) {
   return seuls;
 }
 function dessinerNoeuds() {
+  if (window.desencombrerEtiquettes) setTimeout(window.desencombrerEtiquettes, 0);
   const alertes = numAlerte();
   if (!etat.coucheGroupes) etat.coucheGroupes = L.layerGroup().addTo(carte);
   const regroupables = [...etat.noeuds.values()].filter((n) => visible(n) && !n.infrastructure && !n.passerelle && !(etat.selection === n.num));
@@ -506,6 +531,8 @@ async function attendreMaj(avant) {
   }
   location.reload();
 }
+// Les deux réseaux sont-ils affichés ensemble ? (MeshCore actif et vue « Les deux »)
+const deuxReseaux = () => typeof mc !== 'undefined' && mc.actif && mc.noeuds && etat.vueReseau !== 'meshtastic' && etat.vueReseau !== 'meshcore';
 function resumeAlertes(a) {
   const c = a.filter((x) => x.niveau === 'critique').length, w = a.length - c;
   return a.length ? [c ? `${c} critique${c > 1 ? 's' : ''}` : '', w ? `${w} attention` : ''].filter(Boolean).join(' · ') : 'aucune';
@@ -854,14 +881,22 @@ function montrerAsymetrie(it) {
 
 // ---- Panneau : réseau --------------------------------------------------------
 function rendreReseau() {
-  const a = etat.alertes.filter((x) => x.num == null || dansZoneNum(x.num));
+  // Les deux réseaux affichés : une seule liste d'alertes, critiques d'abord, avec la pastille du réseau
+  const deux = deuxReseaux();
+  const aMt = etat.alertes.filter((x) => x.num == null || dansZoneNum(x.num)).map((x) => ({ ...x, reseau: 'mt' }));
+  const aMc = deux ? ((mc.etat && mc.etat.alertes) || []).filter((x) => { const n = x.noeud && mc.noeuds.get(x.noeud); return !n || mcDansZone(n); }).map((x) => ({ ...x, reseau: 'mc' })) : [];
+  const a = [...aMt, ...aMc].sort((x, y) => (y.niveau === 'critique') - (x.niveau === 'critique') || (y.depuis || 0) - (x.depuis || 0));
+  document.body.classList.toggle('alertes-fusionnees', deux);
   const pastille = $('#nb-alertes');
   pastille.textContent = a.length;
   pastille.className = 'pastille' + (a.some((x) => x.niveau === 'critique') ? ' critique' : a.length ? ' attention' : '');
   $('#resume-alertes').textContent = resumeAlertes(a);
+  const tagR = (x) => deux ? `<span class="tag-reseau ${x.reseau}">${x.reseau === 'mc' ? 'MC' : 'MT'}</span>` : '';
   $('#alertes').innerHTML = a.length
-    ? a.map((x) => `<div class="alerte ${x.niveau}" data-num="${x.num}">${esc(x.message)}<small>${x.niveau === 'critique' ? 'Critique' : 'Attention'} · depuis ${ilYa(x.depuis).replace('il y a ', '')}</small></div>`).join('')
+    ? a.map((x) => `<div class="alerte ${x.niveau}" ${x.type === 'feu' ? `data-feu-voir="${x.lat},${x.lon}"` : x.reseau === 'mc' ? `data-mc-alerte="${esc(x.noeud || '')}"` : `data-num="${x.num}"`}>${tagR(x)}${esc(x.message)}<small>${x.niveau === 'critique' ? 'Critique' : 'Attention'} · depuis ${ilYa(x.depuis).replace('il y a ', '')}</small></div>`).join('')
     : '<div class="vide">Aucune alerte, le réseau est en bonne santé.</div>';
+  const za = $('#alertes');
+  if (!za.dataset.brancheMc) { za.dataset.brancheMc = '1'; za.addEventListener('click', (e) => { const el = e.target.closest('[data-mc-alerte]'); if (el && el.dataset.mcAlerte && typeof mcOuvrirFiche === 'function') mcOuvrirFiche(el.dataset.mcAlerte); }); }
 
   const tous = [...etat.noeuds.values()].filter(dansZone);
   const passerelles = tous.filter((n) => n.passerelle).sort((x, y) => (y.dernierVuPasserelle || 0) - (x.dernierVuPasserelle || 0));
@@ -1005,11 +1040,31 @@ function ligneNoeud(n, point, meta, details) {
 }
 
 // ---- Panneau : nœuds -----------------------------------------------------------
+// Familles communes aux deux réseaux pour le rangement par type (rôles MeshCore rapprochés des catégories Meshtastic)
+const FAMILLE_MC = { repeteur: 'relais', salon: 'salon', companion: 'client', capteur: 'traceur' };
+const FAMILLES = [
+  { cle: 'relais', nom: 'Relais / répéteurs', couleur: '#3b82f6' },
+  { cle: 'salon', nom: 'Room servers', couleur: '#14b8a6' },
+  { cle: 'client', nom: 'Clients / companions', couleur: '#a855f7' },
+  { cle: 'discret', nom: 'Clients muets / cachés', couleur: '#ec4899' },
+  { cle: 'traceur', nom: 'Traceurs / capteurs', couleur: '#f59e0b' },
+  { cle: 'inconnu', nom: 'Inconnus', couleur: '#9ca3af' },
+];
 function rendreNoeuds() {
   const filtre = $('#recherche').value.trim().toLowerCase();
   const tri = $('#tri').value;
   const groupe = $('#groupe-noeuds') ? $('#groupe-noeuds').value : '';
-  let liste = [...etat.noeuds.values()].filter((n) => (groupe ? true : dansZone(n)) && (
+  // Filtre de réseau (les deux réseaux affichés seulement) : Tous, Meshtastic ou MeshCore, gardé dans ce navigateur
+  const deux = deuxReseaux();
+  const zr = $('#filtre-reseau-noeuds');
+  if (zr) {
+    zr.hidden = !deux;
+    if (!zr.dataset.branche) { zr.dataset.branche = '1'; zr.onclick = (e) => { const b = e.target.closest('[data-r]'); if (!b) return; ecrireLs('gaulix_noeuds_reseau', b.dataset.r); rendreNoeuds(); }; }
+  }
+  const vueR = deux ? lireLs('gaulix_noeuds_reseau', 'tous') : 'mt';
+  if (zr) zr.querySelectorAll('[data-r]').forEach((b) => b.classList.toggle('actif', b.dataset.r === vueR));
+  const avecMt = vueR !== 'mc', avecMc = deux && vueR !== 'mt';
+  let liste = !avecMt ? [] : [...etat.noeuds.values()].filter((n) => (groupe ? true : dansZone(n)) && (
     !filtre || [n.nomLong, n.nomCourt].some((x) => x && x.toLowerCase().includes(filtre))
     // L'identifiant (!a1b2c3d4) n'est cherché qu'avec « ! » ou au moins 4 caractères : « 43 » ne doit trouver que les noms
     || ((filtre.startsWith('!') || filtre.length >= 4) && n.id && n.id.toLowerCase().includes(filtre)))
@@ -1020,11 +1075,20 @@ function rendreNoeuds() {
     sauts: (a, b) => (a.sautsMin ?? 99) - (b.sautsMin ?? 99),
     snr: (a, b) => (b.snr ?? -99) - (a.snr ?? -99),
   }[tri];
+  // Nœuds MeshCore ajoutés à la même liste (même recherche, mêmes groupes, mêmes tris)
+  const mcListe = !avecMc ? [] : [...mc.noeuds.values()].filter((n) => (groupe ? true : mcDansZone(n))
+    && (!filtre || (n.nom || '').toLowerCase().includes(filtre) || (filtre.length >= 4 && n.cle.toLowerCase().startsWith(filtre)))
+    && (groupe !== 'favoris' || estFavori(n.cle)) && (groupe !== 'administres' || estAdministre(n.cle)))
+    .map((n) => ({ ...n, mcNoeud: true, num: n.cle, nomLong: n.nom || n.cle.slice(0, 8) }));
+  liste = [...liste, ...mcListe];
   liste.sort((a, b) => (estFavori(b.num) - estFavori(a.num)) || cmp(a, b)); // favoris en tête
   const alertes = numAlerte();
+  const alertesMcNoeuds = new Set(((typeof mc !== 'undefined' && mc.etat && mc.etat.alertes) || []).map((x) => x.noeud));
   const ligne = (n) => {
     const sauts = n.sautsMin == null ? '' : n.sautsMin === 0 ? 'direct · ' : `${n.sautsMin} saut${n.sautsMin > 1 ? 's' : ''} · `;
-    return ligneNoeud(n, alertes.has(n.num) ? 'alerte' : n.statut, sauts + ilYa(n.dernierVu));
+    if (n.mcNoeud) return mcLigneListe(n, alertesMcNoeuds.has(n.cle) ? 'alerte' : n.statut, sauts + ilYa(n.dernierVu), deux);
+    const l = ligneNoeud(n, alertes.has(n.num) ? 'alerte' : n.statut, sauts + ilYa(n.dernierVu));
+    return deux ? l.replace('<span class="titre">', '<span class="titre"><span class="tag-reseau mt">MT</span>') : l;
   };
   const parType = lireLs('gaulix_mt_par_type', true);
   const bp = $('#mt-par-type');
@@ -1033,8 +1097,9 @@ function rendreNoeuds() {
   if (!parType) { $('#noeuds').innerHTML = liste.slice(0, 400).map(ligne).join(''); return; }
   // Rangement par type (catégories de la légende), groupes repliables, état gardé dans ce navigateur
   const replies = lireLs('gaulix_mt_replies', {});
-  $('#noeuds').innerHTML = CATEGORIES.map((c) => {
-    const l = liste.filter((n) => categorie(n) === c);
+  const familleDe = (n) => n.mcNoeud ? (FAMILLE_MC[n.role] || 'inconnu') : categorie(n).cle;
+  $('#noeuds').innerHTML = (avecMc ? FAMILLES : CATEGORIES).map((c) => {
+    const l = liste.filter((n) => familleDe(n) === c.cle);
     if (!l.length) return '';
     const actifs = l.filter((n) => n.statut === 'actif').length;
     return `<details class="groupe-mc" data-cat="${c.cle}" ${replies[c.cle] ? '' : 'open'}><summary><i class="pastille-cat" style="background:${c.couleur}"></i><b>${esc(c.nom)}</b> <span class="pastille">${l.length}</span> <small>${actifs} actif${actifs > 1 ? 's' : ''}</small></summary>${l.slice(0, 300).map(ligne).join('')}</details>`;
@@ -1462,11 +1527,16 @@ function canauxMtConnus() {
 }
 function barreCanauxHtml(reseau, filtre) {
   const el = [];
-  const mt = canauxMtConnus(), mcl = typeof canauxMcConnus === 'function' && etat.config.meshcore ? canauxMcConnus() : [];
+  // Un réseau désactivé (CARTE_RESEAUX) ou masqué par le choix Meshtastic / MeshCore n'a pas de pastilles
+  const avecMt = etat.config.reseaux !== 'meshcore' && etat.vueReseau !== 'meshcore';
+  const avecMc = !!etat.config.meshcore && etat.config.reseaux !== 'meshtastic' && etat.vueReseau !== 'meshtastic';
+  const mt = avecMt ? canauxMtConnus() : [], mcl = avecMc && typeof canauxMcConnus === 'function' ? canauxMcConnus() : [];
   mt.forEach((c, i) => el.push({ k: 'c:' + c.toLowerCase(), r: 'mt', v: 'c:' + c, nom: c, ic: '📢', o: i, coul: couleurCanal(c) }));
-  el.push({ k: 'direct', r: 'mt', v: 'direct', nom: 'Directs', ic: '✉️', o: 50 });
+  if (avecMt) el.push({ k: 'direct', r: 'mt', v: 'direct', nom: 'Directs', ic: '✉️', o: 50 });
   mcl.forEach((c, i) => el.push({ k: 'mc:' + c.toLowerCase(), r: 'mc', v: 'c:' + c, nom: c, ic: '📢', o: 100 + i, coul: couleurCanal(c) }));
-  if (mcl.length || etat.config.meshcore) el.push({ k: 'mcdirect', r: 'mc', v: 'direct', nom: 'Directs', ic: '✉️', o: 150 });
+  if (avecMc) el.push({ k: 'mcdirect', r: 'mc', v: 'direct', nom: 'Directs', ic: '✉️', o: 150 });
+  // Pastilles de l'autre réseau : affichées seulement s'il y a les deux
+  for (const x of el) x.seul = !(avecMt && avecMc);
   // Du nouveau d'abord (le plus récent en premier), puis l'ordre habituel
   el.sort((a, b) => (!!nonLus[b.k] - !!nonLus[a.k]) || (nonLus[a.k] ? (dernierRecu[b.k] || 0) - (dernierRecu[a.k] || 0) : a.o - b.o));
   const tot = Object.entries(nonLus).filter(([k]) => (reseau === 'mc') === k.startsWith('mc')).reduce((a, [, n]) => a + n, 0);
@@ -1474,7 +1544,7 @@ function barreCanauxHtml(reseau, filtre) {
     const n = nonLus[x.k] || 0, t = dernierRecu[x.k], actif = x.r === reseau && filtre === x.v;
     const recent = t && Date.now() - t < 20000;
     return `<button type="button" class="puce-canal${n ? ' a-lire' : ''}${x.k.endsWith('direct') ? ' direct' : ''}${actif ? ' actif' : ''}${recent && n ? ' vient' : ''}" data-puce-r="${x.r}" data-puce-v="${esc(x.v)}" ${x.coul ? `style="--coul:${x.coul}"` : ''} aria-pressed="${actif}" title="${esc((x.r === 'mc' ? 'MeshCore' : 'Meshtastic') + ' · ' + x.nom + (n ? ` : ${n} message${n > 1 ? 's' : ''} en attente` : '') + (t ? ' · dernier reçu ' + ilYa(t) : ''))}">`
-      + `<span class="reseau ${x.r}">${x.r === 'mc' ? 'MC' : 'MT'}</span>${x.ic} ${esc(x.nom)}${n ? `<b class="nb">${n}</b>` : ''}${n && t ? `<small>${ilYa(t)}</small>` : ''}</button>`;
+      + `${x.seul ? '' : `<span class="reseau ${x.r}">${x.r === 'mc' ? 'MC' : 'MT'}</span>`}${x.ic} ${esc(x.nom)}${n ? `<b class="nb">${n}</b>` : ''}${n && t ? `<small>${ilYa(t)}</small>` : ''}</button>`;
   };
   return `<div class="barre-canaux" role="toolbar" aria-label="Canaux : ceux qui ont des messages en attente sont en tête">`
     + `<button type="button" class="puce-canal tous${!filtre ? ' actif' : ''}" data-puce-r="${reseau}" data-puce-v="">Tous${tot ? `<b class="nb">${tot}</b>` : ''}</button>${el.map(puce).join('')}</div>`;
@@ -1499,11 +1569,19 @@ function marquerNouveaux(liste, cle, idDe, estRecu, avant) {
 }
 // ---- Positions partagées par message (« meshand: 45.04,3.88 », comme l'appli MeshAnd ; aussi « geo:… » et « 📍 … ») ----
 const RE_EPINGLE = /(?:meshand:|geo:|📍)\s*(-?\d{1,2}\.\d{3,7})\s*[,;]\s*(-?\d{1,3}\.\d{3,7})/i;
+// Aussi, comme l'appli MeshCore : « 45.0451, 3.8852 » seul (3 décimales au moins), et un code DFCI (« KD42F7.5 »)
+const RE_COORDS_NUES = /(?:^|[\s(:])(-?\d{1,2}\.\d{3,7})\s*,\s*(-?\d{1,3}\.\d{3,7})(?![\d.])/;
+const RE_DFCI_MSG = /(?:^|[^A-Z0-9])([A-HK-N]{2}[02468]{2}[A-HK-L]\d(?:\.[1-5])?)(?![A-Z0-9])/;
 function lireEpingle(texte) {
-  const m = RE_EPINGLE.exec(String(texte || ''));
-  if (!m) return null;
-  const lat = Number(m[1]), lon = Number(m[2]);
-  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+  const t = String(texte || '');
+  const m = RE_EPINGLE.exec(t) || RE_COORDS_NUES.exec(t);
+  if (m) {
+    const lat = Number(m[1]), lon = Number(m[2]);
+    return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0) ? { lat, lon } : null;
+  }
+  const d = typeof DFCI !== 'undefined' && RE_DFCI_MSG.exec(t);
+  if (d) { const r = DFCI.depuisDfci(d[1]); if (r) return { lat: r.lat, lon: r.lon, dfci: r.code }; }
+  return null;
 }
 // Texte d'un message, avec un bouton « voir sur la carte » s'il contient une position
 function texteMessageHtml(texte, qui, heureMsg) {
@@ -1617,7 +1695,8 @@ const CATALOGUE_REGLAGES = [
   ['Passerelle Meshtastic ⇄ MeshCore', 'Outils', 'passerelle relais canal adrasec meshpass activer règle', 'admin', () => ouvrirPasserelle()],
   ['Diagnostic : pourquoi ça ne marche pas ?', 'Réglages', 'diagnostic problème panne vérifier mqtt messages ne remontent pas', 'admin', () => ficheDiagnostic()],
   ['Sauvegarde complète (changer de serveur)', 'Réglages', 'sauvegarde complète export base migration déménager serveur', 'admin', () => { location.href = '/api/sauvegarde-complete'; }],
-  ['Main courante (signalements imprimables)', 'Outils', 'main courante journal intervention pdf imprimer', 'membre', () => window.open('/main-courante', '_blank')],
+  ['Restaurer une sauvegarde complète', 'Réglages', 'restaurer sauvegarde complète import base migration nouveau serveur', 'admin', () => choisirEtRestaurer()],
+  ['Main courante (signalements imprimables)', 'Outils', 'main courante journal intervention pdf imprimer', 'membre', () => (masquee('main-courante') ? annonce('Main courante désactivée sur cette carte') : window.open('/main-courante', '_blank'))],
   ['Mettre à jour la carte', 'Version', 'mise à jour version upgrade docker image nouvelle', 'admin', () => ficheMaj()],
   ['Signalements (route inondée…)', 'Outils', 'signaler événement inondation alerte waypoint bipper germacrise', 'membre', () => ficheSignalements()],
 ];
@@ -1714,7 +1793,7 @@ async function chargerSignalements() {
   let r;
   try { r = await api('/api/signalements'); ecrireLs(CLE_SIG_CACHE, r); } catch { r = lireLs(CLE_SIG_CACHE, null); if (!r) return; r = { ...r, horsLigne: true }; }
   sig.liste = r.signalements; sig.info = r;
-  if (!sig.couche) sig.couche = L.layerGroup().addTo(carte);
+  if (!sig.couche) { sig.couche = L.layerGroup(); if (!masquee('signalements')) sig.couche.addTo(carte); }
   sig.couche.clearLayers();
   for (const s of sig.liste.filter((x) => x.actif)) {
     const m = L.marker([s.lat, s.lon], {
@@ -1875,6 +1954,7 @@ function brancherAlertesBipper() {
   document.querySelectorAll('[data-ab-fin]').forEach((x) => (x.onclick = async () => { try { await postJson('/api/alertes-bipper', { fin: Number(x.dataset.abFin) }); await chargerSignalements(); ficheSignalements('✔ Alerte clôturée.'); } catch (e) { annonce('⚠ ' + e.message, 'erreur'); } }));
 }
 async function ficheSignalements(msg) {
+  if (masquee('signalements')) { ficheAlertesOff(); return; }
   $('#fiche').hidden = false; etat.selection = null;
   const z = $('#fiche-contenu');
   if (!sig.info) await chargerSignalements();
@@ -1883,13 +1963,15 @@ async function ficheSignalements(msg) {
   z.innerHTML = `<div class="liste-signalements"><h2>🚩 Signalements</h2>${msg ? `<p class="note"><b>${esc(msg)}</b></p>` : ''}
     ${sig.info && sig.info.horsLigne ? '<div class="alerte attention">Pas de réseau : dernière liste connue.</div>' : ''}
     ${attente.length ? `<div class="alerte info-lecture">⏳ ${attente.length} signalement(s) fait(s) hors réseau, en attente d’envoi : ${attente.map((s) => esc(s.titre)).join(', ')} <button type="button" class="mini" id="sig-reessayer">Réessayer maintenant</button></div>` : ''}
-    <p class="note">Bouton ＋ ou clic droit sur la carte › <b>🚩 Signaler un événement ici</b>. <a href="/main-courante" target="_blank" rel="noopener">📋 Main courante imprimable</a></p>
+    <p class="note">Bouton ＋ ou clic droit sur la carte › <b>🚩 Signaler un événement ici</b>. ${masquee('main-courante') ? '' : '<a href="/main-courante" target="_blank" rel="noopener">📋 Main courante imprimable</a>'}</p>
     ${l.length ? l.map((s) => `<div class="ligne sig-ligne ${s.actif ? '' : 'passe'}" data-sig="${s.id}"><span class="sig-ic">${s.icone}</span><span class="titre">${esc(s.titre)}<small>${esc(s.details || '')} · ${esc(s.auteur)} ${ilYa(s.cree)}${s.actif ? '' : s.fin ? ' · terminé' : ' · expiré'}</small></span>
       <span class="meta">${s.source === 'radio' ? '📻' : ''}${[...(s.envois.mt || []), s.envois.mc].filter(Boolean).map((e) => e.statut === 'envoye' ? '✔' : e.statut === 'echec' ? '⚠' : '⏳').join(' ')}</span></div>`).join('') : '<div class="vide">Aucun signalement ces 7 derniers jours. <button type="button" class="mini principal" id="sig-premier">🚩 Signaler un événement</button></div>'}
-    ${etat.gestion ? blocAlertesBipper() : ''}</div>`;
+    ${blocAlertesOff()}
+    ${etat.gestion && !masquee('bipper') ? blocAlertesBipper() : ''}</div>`;
   { const b = $('#sig-reessayer'); if (b) b.onclick = () => envoyerSigEnAttente(); }
   { const b = $('#sig-premier'); if (b) b.onclick = () => choisirPointPuis('Touchez la carte à l’endroit à signaler.', (ll) => formSignalement(ll.lat, ll.lng)); }
   brancherAlertesBipper();
+  brancherAlertesOff();
   z.querySelectorAll('[data-sig]').forEach((d) => (d.onclick = () => {
     const s = l.find((x) => x.id === d.dataset.sig);
     carte.setView([s.lat, s.lon], Math.max(carte.getZoom(), 13));
@@ -2011,6 +2093,63 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerMenu
 document.addEventListener('scroll', fermerMenuNoeud, true);
 
 // Insère une position (« meshand: lat,lon ») dans une zone de saisie
+// ---- Saisie des messages (Meshtastic et MeshCore) : brouillon gardé par conversation, messages rapides, @mention ----
+const MSG_RAPIDES_DEFAUT = ['RAS', 'Bien reçu', 'En route', 'Sur place', 'Besoin d’aide', 'Fin de mission', 'Je vous reçois 5/9'];
+const msgRapides = () => { const l = lireLs('gaulix_msg_rapides', null); return Array.isArray(l) && l.length ? l : MSG_RAPIDES_DEFAUT; };
+function ameliorerSaisie(ta, { cle, noms, apres }) {
+  if (!ta) return;
+  const k = () => 'gaulix_brouillon_' + cle();
+  // Brouillon : repris s'il n'y a rien dans la zone, gardé à chaque frappe, effacé après l'envoi
+  if (!ta.value) { const b = lireLs(k(), ''); if (b) { ta.value = b; ta.dispatchEvent(new Event('input')); } }
+  if (!ta.dataset.ameliore) {
+    ta.dataset.ameliore = '1';
+    ta.addEventListener('input', () => { ecrireLs(k(), ta.value.slice(0, 400)); proposerMention(); });
+    const f = ta.form;
+    if (f) f.addEventListener('submit', () => setTimeout(() => { if (!ta.value.trim()) ecrireLs(k(), ''); }, 2500));
+    // @mention : après « @ » et quelques lettres, les noms connus qui commencent ainsi ; Tab ou clic pour compléter
+    const liste = document.createElement('div');
+    liste.className = 'mentions';
+    liste.hidden = true;
+    (ta.closest('.envoi-ligne') || ta).insertAdjacentElement('afterend', liste);
+    const motCourant = () => { const avant = ta.value.slice(0, ta.selectionStart); const m = /@([\p{L}\p{N}_.-]{1,20})$/u.exec(avant); return m ? m[1] : null; };
+    const completer = (nom) => {
+      const avant = ta.value.slice(0, ta.selectionStart), apresTxt = ta.value.slice(ta.selectionStart);
+      const debut = avant.replace(/@([\p{L}\p{N}_.-]{1,20})$/u, '@' + nom + ' ');
+      ta.value = debut + apresTxt; ta.selectionStart = ta.selectionEnd = debut.length;
+      liste.hidden = true; ta.dispatchEvent(new Event('input')); ta.focus();
+    };
+    function proposerMention() {
+      const m = motCourant();
+      if (!m) { liste.hidden = true; return; }
+      const choix = [...new Set(noms().filter(Boolean))].filter((n) => n.toLowerCase().startsWith(m.toLowerCase()) && n.toLowerCase() !== m.toLowerCase()).slice(0, 6);
+      liste.innerHTML = choix.map((n) => `<button type="button" data-n="${esc(n)}">@${esc(n)}</button>`).join('');
+      liste.hidden = !choix.length;
+    }
+    liste.addEventListener('mousedown', (e) => { const b = e.target.closest('[data-n]'); if (b) { e.preventDefault(); completer(b.dataset.n); } });
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Tab' && !liste.hidden) { const b = liste.querySelector('[data-n]'); if (b) { e.preventDefault(); completer(b.dataset.n); } } else if (e.key === 'Escape') liste.hidden = true; });
+    ta.addEventListener('blur', () => setTimeout(() => { liste.hidden = true; }, 150));
+  }
+  // Messages rapides : une liste à choisir, modifiable
+  if (apres && !apres.querySelector('.msg-rapides')) {
+    const sel = document.createElement('select');
+    sel.className = 'mini msg-rapides';
+    sel.title = 'Messages rapides : un clic ajoute le texte au message';
+    const remplir = () => { sel.innerHTML = `<option value="">⚡ Message rapide</option>${msgRapides().map((m) => `<option>${esc(m)}</option>`).join('')}<option value="__modifier">✏️ Modifier la liste…</option>`; };
+    remplir();
+    sel.onchange = async () => {
+      const v = sel.value; sel.value = '';
+      if (!v) return;
+      if (v === '__modifier') {
+        const r = await saisir('Messages rapides, séparés par « | » :', msgRapides().join(' | '));
+        if (r != null) { ecrireLs('gaulix_msg_rapides', r.split('|').map((x) => x.trim()).filter(Boolean).slice(0, 20)); remplir(); }
+        return;
+      }
+      ta.value = ta.value.trim() ? ta.value.trimEnd() + ' ' + v : v;
+      ta.dispatchEvent(new Event('input')); ta.focus();
+    };
+    apres.appendChild(sel);
+  }
+}
 function insererPosition(zone, lat, lon) {
   if (!zone) return;
   const t = `meshand: ${lat.toFixed(5)},${lon.toFixed(5)}`;
@@ -2062,15 +2201,56 @@ function rendreMessages() {
     : filtreMessages === 'direct' ? tous.filter((m) => estMonDirect(m))
       : tous.filter((m) => m.vers === 0xffffffff && memeCanal(m.canal, filtreMessages.slice(2)));
   $('#messages').innerHTML = msgs.length
-    ? msgs.map((m) => `<div class="message${etat.radio && m.de === etat.radio.noeudLocal ? ' moi' : ''}${msgNouveaux.has('mt' + m.rowid) ? ' nouveau' : ''}${etat.admin ? ' cliquable' : ''}" data-rowid="${m.rowid}" data-de="${m.de}" data-vers="${m.vers}" data-canal="${esc(m.canal || '')}" title="${etat.admin ? 'Cliquer pour répondre dans ce canal' : ''}"><div class="entete">${heure(m.heure)} · ${new Date(m.heure).toLocaleDateString('fr-FR')} · ${m.vers !== 0xffffffff ? '<b class="canal-msg direct">✉️ Direct</b>' : `<b class="canal-msg" style="--coul:${couleurCanal(m.canal)}">📢 ${esc(m.canal || '?')}</b>`}${msgNouveaux.has('mt' + m.rowid) ? ' <span class="etiquette-nouveau">nouveau</span>' : ''}${estRelaye(m.texte) ? ' <span class="badge-passerelle" title="Relayé par une passerelle inter-réseaux">⇄ passerelle</span>' : ''} · ${esc(nomNoeud(m.de))}${m.vers !== 0xffffffff ? ' → ' + esc(nomNoeud(m.vers)) : ''}</div><div class="texte" translate="no">${m.texte ? texteMessageHtml(m.texte, nomNoeud(m.de), m.heure) : '(non conservé)'}</div>${origineMessage(m)}${suiviMessage(m)}</div>`).join('')
+    ? msgs.map((m) => `<div class="message${etat.radio && m.de === etat.radio.noeudLocal ? ' moi' : ''}${msgNouveaux.has('mt' + m.rowid) ? ' nouveau' : ''}${etat.admin ? ' cliquable' : ''}" data-rowid="${m.rowid}" data-de="${m.de}" data-vers="${m.vers}" data-canal="${esc(m.canal || '')}" title="${etat.admin ? 'Cliquer pour répondre dans ce canal' : ''}"><div class="entete">${heure(m.heure)} · ${new Date(m.heure).toLocaleDateString('fr-FR')} · ${m.vers !== 0xffffffff ? '<b class="canal-msg direct">✉️ Direct</b>' : `<b class="canal-msg" style="--coul:${couleurCanal(m.canal)}">📢 ${esc(m.canal || '?')}</b>`}${msgNouveaux.has('mt' + m.rowid) ? ' <span class="etiquette-nouveau">nouveau</span>' : ''}${estRelaye(m.texte) ? ' <span class="badge-passerelle" title="Relayé par une passerelle inter-réseaux">⇄ passerelle</span>' : ''} · ${boutonAuteur(m.de)}${m.vers !== 0xffffffff ? ' → ' + boutonAuteur(m.vers) : ''}</div><div class="texte" translate="no">${m.texte ? texteMessageHtml(m.texte, nomNoeud(m.de), m.heure) : '(non conservé)'}</div>${origineMessage(m)}${suiviMessage(m)}</div>`).join('')
     : `<div class="vide">${filtreMessages === 'direct' && !mesNums().size ? 'Aucun module relié à la carte : vos messages directs sont ceux envoyés ou reçus par votre module.' : filtreMessages === 'direct' ? 'Aucun message direct envoyé ou reçu par votre module sur la période.' : filtreMessages ? 'Aucun message dans ce choix sur la période.' : 'Aucun message texte sur la période.'}</div>`;
   epinglerMessages(msgs.map((m) => ({ texte: m.texte, heure: m.heure, qui: nomNoeud(m.de) })));
-  if (etat.admin) $('#messages').querySelectorAll('.message[data-de]').forEach((el) => (el.onclick = () => repondreA(el)));
+  if (etat.admin) $('#messages').querySelectorAll('.message[data-de]').forEach((el) => (el.onclick = (e) => { if (!e.target.closest('[data-auteur]')) repondreA(el); }));
   $('#messages').querySelectorAll('.origines, .suivi-msg').forEach((el) => {
     el.title = 'Voir le parcours du message sur la carte';
     el.onclick = (e) => { e.stopPropagation(); afficherParcours(Number(el.closest('.message').dataset.rowid)); };
   });
 }
+
+// Nom de l'auteur (ou du destinataire) d'un message : un clic ouvre un petit menu (fiche, message direct, carte)
+function boutonAuteur(num) {
+  return `<button type="button" class="auteur-msg" data-auteur="${num >>> 0}" title="Fiche, message direct, position">${esc(nomNoeud(num))}</button>`;
+}
+// Petit menu contextuel ancré sous un élément : items = [[libellé, action], …]
+function ouvrirMenu(ancre, titre, items) {
+  document.querySelectorAll('.menu-noeud').forEach((x) => x.remove());
+  const m = document.createElement('div');
+  m.className = 'menu-noeud';
+  m.setAttribute('role', 'menu');
+  m.innerHTML = `<div class="titre">${titre}</div>${items.map(([l], i) => `<button type="button" role="menuitem" data-i="${i}">${esc(l)}</button>`).join('')}`;
+  document.body.appendChild(m);
+  const b = ancre.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(b.left, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (b.bottom + m.offsetHeight + 8 > innerHeight ? Math.max(8, b.top - m.offsetHeight - 4) : b.bottom + 4) + 'px';
+  const fermer = () => { m.remove(); document.removeEventListener('pointerdown', dehors, true); document.removeEventListener('keydown', echap); };
+  const dehors = (e) => { if (!m.contains(e.target)) fermer(); };
+  const echap = (e) => { if (e.key === 'Escape') { fermer(); ancre.focus(); } };
+  setTimeout(() => { document.addEventListener('pointerdown', dehors, true); document.addEventListener('keydown', echap); }, 0);
+  m.onclick = (e) => { const x = e.target.closest('[data-i]'); if (!x) return; fermer(); items[Number(x.dataset.i)][1](); };
+  const premier = m.querySelector('button'); if (premier) premier.focus();
+}
+function menuNoeud(num, ancre) {
+  num = num >>> 0;
+  const n = etat.noeuds.get(num);
+  const moi = etat.radio && etat.radio.noeudLocal === num;
+  const items = [['📇 Fiche du nœud', () => ouvrirFiche(num)]];
+  if (etat.admin && !moi) items.push(['✉️ Message direct', async () => {
+    await preparerEnvoi(num);
+    const f = $('#form-envoi');
+    if (f && !f.hidden) { if (filtreMessages !== 'direct') choisirFiltreMessages('direct'); f.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); f.texte.focus(); }
+  }]);
+  if (n && n.lat != null) items.push(['📍 Voir sur la carte', () => carte.setView([n.lat, n.lon], Math.max(carte.getZoom(), 13))]);
+  ouvrirMenu(ancre, `${esc(nomNoeud(num))} <small>${idHex(num)}</small>`, items);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-auteur]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  menuNoeud(Number(b.dataset.auteur), b);
+});
 
 // Clic sur un message : le formulaire bascule sur le bon canal (ou en direct vers l'expéditeur) pour répondre
 async function repondreA(el) {
@@ -2172,6 +2352,50 @@ function brancherInstallation(n) {
     catch (err) { $('#install-retour').textContent = err.message; }
   };
 }
+// ---- Responsable d'un nœud : la personne qui en répond (membres connectés seulement) ----
+async function chargerResponsables() {
+  try { etat.responsables = await api('/api/responsables'); } catch { etat.responsables = {}; return; }
+  const z = $('#bloc-responsable');
+  if (z && z.dataset.num) z.outerHTML = blocResponsable(Number(z.dataset.num));
+}
+function blocResponsable(num) {
+  if (!etat.membre) return '';
+  const r = (etat.responsables || {})[String(num >>> 0)];
+  const peut = gerable(num);
+  if (!r && !peut) return '';
+  return `<div class="responsable-noeud" id="bloc-responsable" data-num="${num >>> 0}">👤 ${r ? `Responsable : <b>${esc(r.personne || r.compte || '?')}</b>${r.compte && r.personne && r.personne !== r.compte ? ` <small>compte ${esc(r.compte)}</small>` : ''}${r.contact ? ` · <span>${esc(r.contact)}</span>` : ''}` : '<span class="note">Aucun responsable désigné</span>'}
+    ${peut ? `<button type="button" class="mini" data-resp="${num >>> 0}">${r ? '✏️ Modifier' : 'Désigner'}</button>` : ''}</div>`;
+}
+async function dlgResponsable(num) {
+  const r = (etat.responsables || {})[String(num >>> 0)] || {};
+  let cpt = [];
+  try { cpt = await api('/api/responsables/comptes'); } catch { /* liste indisponible */ }
+  let d = document.getElementById('dlg-responsable');
+  if (!d) { d = document.createElement('dialog'); d.id = 'dlg-responsable'; document.body.appendChild(d); }
+  const n = etat.noeuds.get(num >>> 0) || {};
+  d.innerHTML = `<button class="fermer" type="button" data-fermer title="Fermer">×</button><h3>👤 Responsable de ${esc(n.nomLong || n.nomCourt || '!' + (num >>> 0).toString(16))}</h3>
+    <p class="note">La personne qui répond de ce nœud : à qui s’adresser s’il tombe en panne, s’il faut le régler ou s’il émet mal. Visible des seuls membres connectés ; le contact, des seuls gestionnaires.</p>
+    <div class="parametres">
+      <label>Compte de la carte <select name="compte"><option value="">— aucun —</option>${cpt.map((c) => `<option value="${c.id}" data-role="${esc(c.role)}" ${r.compteId === c.id ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}</select></label>
+      <label>Nom ou indicatif <input name="personne" maxlength="60" value="${esc(r.personne || '')}" placeholder="si la personne n’a pas de compte"></label>
+      <label class="ligne-entiere">Contact <input name="contact" maxlength="120" value="${esc(r.contact || '')}" placeholder="téléphone, adresse, consignes d’accès…"></label>
+      ${etat.admin ? '<label class="case ligne-entiere"><input type="checkbox" name="droit"> Donner à ce compte le droit de régler ce nœud (il entre dans son secteur)</label>' : ''}
+    </div>
+    <div class="actions-prop"><button type="button" class="principal" data-ok>Enregistrer</button>${r.personne || r.compteId ? '<button type="button" data-retirer>Retirer le responsable</button>' : ''}</div><p class="erreur" data-retour></p>`;
+  const envoyer = async (corps) => {
+    try { await postJson(`/api/noeuds/${num >>> 0}/responsable`, corps); d.close(); await chargerResponsables(); annonce('✔ Responsable enregistré'); } catch (e) { d.querySelector('[data-retour]').textContent = e.message; }
+  };
+  d.querySelector('[data-fermer]').onclick = () => d.close();
+  d.querySelector('[data-ok]').onclick = () => {
+    const q = (k) => d.querySelector(`[name=${k}]`);
+    if (!q('compte').value && !q('personne').value.trim()) { d.querySelector('[data-retour]').textContent = 'Choisissez un compte ou indiquez un nom.'; return; }
+    envoyer({ compteId: q('compte').value ? Number(q('compte').value) : null, personne: q('personne').value, contact: q('contact').value, droit: !!(q('droit') && q('droit').checked) });
+  };
+  const ret = d.querySelector('[data-retirer]'); if (ret) ret.onclick = () => envoyer({ personne: '', compteId: null });
+  d.showModal();
+}
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-resp]'); if (b) { e.preventDefault(); dlgResponsable(Number(b.dataset.resp)); } });
+
 async function ouvrirFiche(num) {
   etat.selection = num;
   const fiche = $('#fiche');
@@ -2224,9 +2448,11 @@ async function ouvrirFiche(num) {
       ${n.materiel ? `<span class="badge">${esc(n.materiel)}</span>` : ''}
     </div>
     <nav class="onglets-fiche">
-      <button data-of="infos" class="actif">Informations</button><button data-of="telem">Télémétries</button><button data-of="voisins">Voisins</button><button data-of="config">Configuration</button>${etat.membre ? `<button data-of="install">Installation${d.installation ? ' ✓' : ''}</button>` : ''}<button data-of="trames">Trames</button>
+      <button data-of="infos" class="actif">Informations</button><button data-of="telem">Télémétries</button><button data-of="voisins">Voisins</button><button data-of="config">Configuration</button>${etat.membre ? `<button data-of="install">Installation${d.installation ? ' ✓' : ''}</button>` : ''}<button data-of="stats">Statistiques</button><button data-of="trames">Trames</button>
     </nav>
+    <div data-pf="stats" hidden><div id="stats-noeud" class="vide">Chargement…</div></div>
     <div data-pf="infos">
+    ${blocResponsable(n.num)}
     ${alertesNoeud.map((a) => `<div class="liste-alertes"><div class="alerte ${a.niveau}">${esc(a.message)}</div></div>`).join('')}
     <div class="grille">${mesures.map(([l, v]) => `<div class="mesure"><span>${l}</span><b>${esc(v)}</b></div>`).join('')}</div>
     <div class="boutons">
@@ -2253,6 +2479,8 @@ async function ouvrirFiche(num) {
     ${d.telemetrie.length < 2 ? '<div class="vide">Pas encore assez de télémétrie.</div>' : ''}
     </div>
     <div data-pf="voisins" hidden>
+    <h4>Pour le joindre</h4>
+    <div id="pour-joindre"><div class="vide">Chargement…</div></div>
     <h4>Entendu par</h4>
     <div id="entendu-par"><div class="vide">Chargement…</div></div>
     <h4>Voisins radio (${d.voisins.length})</h4>
@@ -2279,6 +2507,7 @@ async function ouvrirFiche(num) {
   $('#fiche-contenu').querySelectorAll('[data-of]').forEach((b) => (b.onclick = () => {
     $('#fiche-contenu').querySelectorAll('[data-of]').forEach((x) => x.classList.toggle('actif', x === b));
     $('#fiche-contenu').querySelectorAll('[data-pf]').forEach((x) => (x.hidden = x.dataset.pf !== b.dataset.of));
+    if (b.dataset.of === 'stats') statistiquesNoeud(n.num);
   }));
   $('#toutes-trames').onclick = () => ouvrirTrames(n.num);
   brancherInstallation(n, d.installation);
@@ -4265,8 +4494,11 @@ async function rendreModules(force) {
 
 // ---- Recherche d'un lieu (nœuds, points hauts, lieux et adresses) ------------------------------
 let marqueurRecherche = null;
+let contourRecherche = null;
 function placerLieu(l) {
   if (marqueurRecherche) marqueurRecherche.remove();
+  if (contourRecherche) { contourRecherche.remove(); contourRecherche = null; }
+  if (l.contour) contourRecherche = L.polygon(l.contour, { color: '#ff5a1f', weight: 3, fillOpacity: 0.12, pane: 'traces', interactive: false }).addTo(carte);
   const ll = L.latLng(l.lat, l.lon);
   carte.flyTo(ll, Math.max(carte.getZoom(), l.zoom || 15), { duration: 0.8 });
   const div = document.createElement('div');
@@ -4307,6 +4539,15 @@ function brancherRecherche() {
       if (nd.lat == null) continue;
       if ([nd.nomLong, nd.nomCourt, nd.id].some((x) => x && x.toLowerCase().includes(t))) locaux.push({ type: 'Nœud', nom: nd.nomLong || nd.nomCourt || nd.id, detail: nd.roleFr, lat: nd.lat, lon: nd.lon, alt: nd.alt, num: nd.num, zoom: 13 });
     }
+    // Nœuds MeshCore (répéteurs, room servers, companions, capteurs) : par nom ou début de clé ; la fiche s'ouvre directement
+    if (typeof mc !== 'undefined' && mc.noeuds && etat.vueReseau !== 'meshtastic') {
+      const ROLES_MC = { repeteur: 'Répéteur', salon: 'Room server', companion: 'Companion', capteur: 'Capteur' };
+      for (const nd of mc.noeuds.values()) {
+        if (locaux.length >= 12) break;
+        if (!((nd.nom && nd.nom.toLowerCase().includes(t)) || (t.length >= 4 && String(nd.cle || '').toLowerCase().startsWith(t)))) continue;
+        locaux.push({ type: 'MeshCore', nom: nd.nom || String(nd.cle).slice(0, 8), detail: ROLES_MC[nd.role] || '', go: () => { if (nd.lat != null) carte.flyTo([nd.lat, nd.lon], Math.max(carte.getZoom(), 13), { duration: 0.6 }); if (typeof mcOuvrirFiche === 'function') mcOuvrirFiche(nd.cle); } });
+      }
+    }
     for (const sm of etat.sommets) if (sm.nom && sm.nom.toLowerCase().includes(t)) locaux.push({ type: 'Sommet', nom: sm.nom, detail: `${sm.alt} m${sm.commune ? ' · ' + sm.commune : ''}`, lat: sm.lat, lon: sm.lon, alt: sm.alt, zoom: 14 });
     // Réglages et fonctions de la carte (même catalogue que ⚙️🔎)
     const fonctions = [];
@@ -4325,6 +4566,11 @@ function brancherRecherche() {
     clearTimeout(minuterie);
     const q = champ.value.trim();
     if (q.length < 2) { fermer(); return; }
+    // Code DFCI saisi directement : « KD42F7 », « KD42F7.5 », « KD42 »
+    if (window.DFCI && DFCI.estCodeDfci(q)) {
+      const d = DFCI.depuisDfci(q);
+      if (d) { resultats = [{ type: 'DFCI', nom: d.code, detail: d.cote >= 1000 ? `carré de ${d.cote >= 20000 ? d.cote / 1000 + ' km' : d.cote === 2000 ? '2 km' : '1 km (zone)'}` : '', lat: d.lat, lon: d.lon, contour: d.contour, zoom: d.cote <= 1000 ? 15 : d.cote <= 2000 ? 14 : d.cote <= 20000 ? 11 : 9 }]; index = 0; afficher(); return; }
+    }
     // Coordonnées saisies directement : « 45.0473, 3.8852 »
     const m = q.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)\s*$/);
     if (m) {
@@ -4509,7 +4755,23 @@ function graphiqueSignal(pts) {
     <text x="${m.g}" y="${m.h - 2}" class="t-snr">SNR (dB)</text><text x="${W - m.d}" y="${m.h - 2}" class="t-rssi" text-anchor="end">RSSI (dBm)</text>
   </svg>`;
 }
+// « Pour le joindre » : stations de la carte capables de l'atteindre, et sens de liaison prouvé
+async function chargerPourJoindre(n) {
+  const z = $('#pour-joindre');
+  if (!z) return;
+  let r;
+  try { r = await api(`/api/noeuds/${n.num}/joindre`); } catch { z.innerHTML = '<div class="vide">Indisponible.</div>'; return; }
+  const l = r.lignes || [];
+  const nos = l.filter((x) => x.emetteur);
+  const meilleur = nos.find((x) => x.direct || x.sautsMin != null);
+  z.innerHTML = `${meilleur ? `<p class="note">Pour lui écrire : par <b>${esc(meilleur.nom)}</b> (${esc(meilleur.via)}), ${esc(meilleur.verdict)}.</p>` : nos.length ? '<p class="note">Aucun module de la carte ne l’a entendu sur 7 jours : un message partira en inondation, sans garantie.</p>' : '<p class="note">Aucun module radio relié à la carte : elle ne peut pas lui écrire elle-même.</p>'}
+    ${l.length ? `<table class="voisins"><thead><tr><th>Station</th><th>Liaison</th><th>Retour</th><th>Dernière</th></tr></thead><tbody>
+    ${l.map((x) => `<tr><td>${lienNoeud(x.station)}<small> ${esc(x.via)}</small></td><td class="${x.direct ? '' : 'note'}">${esc(x.verdict)}${x.snrEntendu != null ? ` <small style="color:${couleurSnr(x.snrEntendu)}">${fmt(x.snrEntendu, 1, ' dB')}</small>` : ''}</td>
+      <td>${x.retourProuve ? `✔ <small>${esc(x.preuveRetour || '')}</small>` : '<span class="note">non prouvé</span>'}</td><td class="nowrap">${x.dernier ? ilYa(x.dernier) : '–'}</td></tr>`).join('')}</tbody></table>
+    <p class="note">Entendre un nœud ne prouve pas qu’il nous entend. Le retour est prouvé quand il nous liste dans son voisinage, qu’une traceroute revient ou qu’une liaison est mesurée dans l’autre sens. Une passerelle MQTT ne fait qu’écouter : lui écrire par elle suppose qu’elle redescende les messages, réglage que la carte ne connaît pas.</p>` : ''}`;
+}
 async function chargerEntenduPar(n) {
+  chargerPourJoindre(n);
   const z = $('#entendu-par');
   if (!z) return;
   let l;
@@ -4684,13 +4946,23 @@ meshtastic --host 192.168.1.50 --dest '!a1b2c3d4' --set security.is_managed true
       ${e.description ? `<div class="meta-longue">${esc(e.description)}</div>` : ''}
       ${!e.cleLisible ? '<div class="alerte attention">La clé de cette équipe ne se déchiffre plus (clé maîtresse ou CLE_EQUIPES changée) : créez une nouvelle clé.</div>' : ''}
       <div class="liste-membres">${e.membres.length ? e.membres.map((m) => { const [c, t] = etatMembre(m); return `<div class="membre-eq ${c}">
-        <span class="nom">${esc(nomNoeud(m.num))} <small>${idHex(m.num)}</small></span><span class="etat">${t}</span>
+        <span class="nom">${esc(nomNoeud(m.num))} <small>${idHex(m.num)}</small>${(() => { const rp = (etat.responsables || {})[String(m.num >>> 0)]; return rp ? ` <small title="Responsable">👤 ${esc(rp.personne || rp.compte || '')}</small>` : ''; })()}</span><span class="etat">${t}</span>
+        <button class="mini" data-resp="${m.num}" title="Désigner la personne qui répond de ce nœud">👤</button>
         ${m.dernier && m.dernier.statut === 'echec' && m.dernier.detail ? `<small class="detail">${esc(m.dernier.detail)}</small>` : ''}
         ${m.etat === 'membre' ? `<button class="mini" data-retirer="${m.num}" title="Retirer le canal de ce nœud">Retirer</button>` : ''}
         <small class="detail ${m.sansNouvelle ? 'sans-nouvelle' : ''}">${m.position ? `📍 position ${m.position.heure ? ilYa(m.position.heure) : 'connue'} <a href="#" data-voir-pos="${m.position.lat},${m.position.lon}">voir</a>` : '📍 position inconnue'}${m.sansNouvelle ? ' · ⚠ sans nouvelle' : ''}</small></div>`; }).join('') : '<div class="vide">Aucun nœud dans cette équipe.</div>'}</div>
       <div class="champ-ajout"><input type="text" data-saisie placeholder="!a1b2c3d4, !e5f6a7b8…" aria-label="Nœuds à ajouter"><button class="principal" data-ajouter>➕ Ajouter${sel.length ? ` (+ ${sel.length} coché${sel.length > 1 ? 's' : ''})` : ''}</button></div>
       <label>Suivi des positions <select data-suivi>${[[0, 'à la demande'], [5, 'toutes les 5 min'], [10, 'toutes les 10 min'], [15, 'toutes les 15 min'], [30, 'toutes les 30 min'], [60, 'toutes les heures']].map(([v, t]) => `<option value="${v}" ${e.suiviMin === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="case"><input type="checkbox" data-positions ${e.positions ? 'checked' : ''}> Positions des membres sur le canal d’équipe (s’applique aux prochains envois)</label>
+      ${(e.sos || []).map((x) => `<div class="alerte ${x.pris ? 'info-lecture' : 'critique'} sos-eq">🆘 <b>${esc(x.nom)}</b> demande de l’aide ${ilYa(x.heure)} : « ${esc(x.texte)} »${x.position ? ` · <a href="#" data-voir-pos="${x.position.lat},${x.position.lon}">📍 voir</a> <small class="mono">${esc((window.DFCI && DFCI.versDfci(x.position.lat, x.position.lon)) || '')}</small>` : ''}${x.pris ? ` <small>· pris en compte par ${esc(x.prisPar || '?')} ${ilYa(x.pris)}</small>` : ` <button class="mini principal" data-sos-pris="${x.id}">✔ Pris en compte</button>`}</div>`).join('')}
+      <div class="parametres compact">
+        <label>Mode recherche <select data-recherche><option value="0">${e.recherche ? '⏹ Arrêter' : '— désactivé —'}</option>${[15, 30, 60, 120].map((m) => `<option value="${m}">positions toutes les 2 min pendant ${m >= 60 ? m / 60 + ' h' : m + ' min'}</option>`).join('')}</select></label>
+        ${e.recherche ? `<span class="note">🔎 En cours jusqu’à ${new Date(e.recherche.jusqua).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} (toutes les ${e.recherche.intervalle} min)</span>` : ''}
+      </div>
+      <div class="parametres compact">
+        <span>Zone de sécurité : ${e.zone ? `<b>${(e.zone.rayon / 1000).toLocaleString('fr-FR')} km</b> autour de ${e.zone.lat.toFixed(4)}, ${e.zone.lon.toFixed(4)} <a href="#" data-voir-zone>voir</a>` : '<span class="note">aucune</span>'}</span>
+        <button class="mini" data-zone>📍 ${e.zone ? 'Changer' : 'Définir'} la zone</button>${e.zone ? '<button class="mini" data-zone-suppr>Retirer</button>' : ''}
+      </div>
       <div class="actions-prop">
         ${e.nbMembres ? `<button data-positions-eq title="Chaque nœud de l’équipe renvoie sa position (espacées de 3 s)">📍 Demander les positions</button>` : ''}
         <button data-reappliquer title="Renvoyer le canal aux nœuds pas à jour, et le retrait à ceux qui ne l’ont pas confirmé">↻ Renvoyer aux nœuds pas à jour</button>
@@ -4735,6 +5007,21 @@ meshtastic --host 192.168.1.50 --dest '!a1b2c3d4' --set security.is_managed true
     }));
     bloc.querySelector('[data-suivi]').onchange = async (ev) => { try { await postJson(`/api/equipes/${id}`, { suiviMin: Number(ev.target.value) }, 'PATCH'); retour(Number(ev.target.value) ? 'Suivi activé : la carte demande leur position aux membres à cet intervalle, et signale ceux qui ne répondent plus (onglet Réseau › Alertes).' : 'Suivi arrêté.'); } catch (e) { retour(e.message); } };
     bloc.querySelectorAll('[data-voir-pos]').forEach((l) => (l.onclick = (ev) => { ev.preventDefault(); const [la, lo] = l.dataset.voirPos.split(',').map(Number); carte.setView([la, lo], Math.max(carte.getZoom(), 14)); }));
+    bloc.querySelectorAll('[data-sos-pris]').forEach((b) => (b.onclick = async () => { try { await postJson(`/api/equipes/${id}/sos/${b.dataset.sosPris}`, {}); ficheEquipes(id); } catch (e) { retour(e.message); } }));
+    bloc.querySelector('[data-recherche]').onchange = async (ev) => {
+      const m = Number(ev.target.value);
+      try { await postJson(`/api/equipes/${id}/recherche`, { minutes: m, intervalle: 2 }); ficheEquipes(id).then(() => { const b = z.querySelector(`[data-eq="${id}"] [data-retour]`); if (b) b.textContent = m ? `🔎 Mode recherche : positions demandées toutes les 2 min pendant ${m} min, puis retour au suivi habituel. Chaque demande est un paquet radio.` : 'Mode recherche arrêté.'; }); } catch (e) { retour(e.message); }
+    };
+    { const eq = r.equipes.find((x) => x.id === id);
+      const bz = bloc.querySelector('[data-zone]'); if (bz) bz.onclick = () => choisirPointPuis('Touchez la carte au centre de la zone de sécurité.', async (ll) => {
+        const km = await saisir('Rayon de la zone de sécurité, en km (0,1 à 100) :', eq.zone ? String(eq.zone.rayon / 1000).replace('.', ',') : '2');
+        if (km == null) return;
+        const v = Number(String(km).replace(',', '.'));
+        try { await postJson(`/api/equipes/${id}`, { zone: { lat: ll.lat, lon: ll.lng, rayon: v * 1000 } }, 'PATCH'); ficheEquipes(id); montrerZoneEquipe({ lat: ll.lat, lon: ll.lng, rayon: v * 1000 }, eq.nom); } catch (e) { retour(e.message); }
+      });
+      const bs = bloc.querySelector('[data-zone-suppr]'); if (bs) bs.onclick = async () => { try { await postJson(`/api/equipes/${id}`, { zone: null }, 'PATCH'); montrerZoneEquipe(null); ficheEquipes(id); } catch (e) { retour(e.message); } };
+      const bv = bloc.querySelector('[data-voir-zone]'); if (bv) bv.onclick = (ev) => { ev.preventDefault(); montrerZoneEquipe(eq.zone, eq.nom, true); };
+    }
     bloc.querySelector('[data-positions]').onchange = async (ev) => { try { await postJson(`/api/equipes/${id}`, { positions: ev.target.checked }, 'PATCH'); retour('Enregistré : « Renvoyer » ou une nouvelle clé l’appliquera aux nœuds déjà membres.'); } catch (e) { retour(e.message); } };
     { const bp = bloc.querySelector('[data-positions-eq]'); if (bp) bp.onclick = async () => {
       const eq = r.equipes.find((x) => x.id === id);
@@ -5959,6 +6246,26 @@ function connecterWs() {
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.genre === 'signalement') { if (etat.membre) chargerSignalements(); return; }
+    if (m.genre === 'responsables') { if (etat.membre) chargerResponsables(); return; }
+    if (m.genre === 'alertes-officielles') { chargerAlertesOff(); return; }
+    if (m.genre === 'feux') { if (etat.couches.feux) dessinerFeux(); return; }
+    if (m.genre === 'fonctions-masquees') {
+      etat.config.fonctionsMasquees = m.masquees || [];
+      appliquerFonctionsMasquees();
+      const f = $('#fiche-contenu');
+      if (f && !$('#fiche').hidden && f.querySelector('.alertes-off')) (etat.membre && !masquee('signalements') ? ficheSignalements() : ficheAlertesOff());
+      return;
+    }
+    if (m.genre === 'equipe-sos') {
+      if (etat.gestion) {
+        annonce(`🆘 ${m.nom} (équipe ${m.nomEquipe}) demande de l’aide : « ${m.texte} »`, 'erreur');
+        try { if (window.Notification && Notification.permission === 'granted') new Notification('🆘 Demande d’aide', { body: `${m.nom} (équipe ${m.nomEquipe}) : ${m.texte}` }); } catch { /* pas de notification */ }
+        try { bip([880, 1320, 1760, 1320, 1760], 0.15); } catch { /* pas de son */ }
+        if (m.position) L.popup().setLatLng([m.position.lat, m.position.lon]).setContent(`<b>🆘 ${esc(m.nom)}</b><br>${esc(m.texte)}<br><small>équipe ${esc(m.nomEquipe)}</small>`).openOn(carte);
+      }
+      return;
+    }
+    if (m.genre === 'equipes') { const z = $('#fiche-contenu'); if (z && z.querySelector('.equipes') && !$('#fiche').hidden && !z.contains(document.activeElement)) ficheEquipes(); return; }
     if (m.genre === 'position-reponse') {
       const n = etat.noeuds.get(m.num >>> 0);
       const nom = n ? n.nomLong || n.nomCourt || n.id : '!' + (m.num >>> 0).toString(16);
@@ -6045,6 +6352,9 @@ function brancherInterface() {
   $('#recherche').oninput = rendreNoeuds;
   $('#tri').onchange = rendreNoeuds;
   { const bp = $('#btn-position-envoi'); if (bp) bp.onclick = () => { const c = carte.getCenter(); insererPosition($('#form-envoi').texte, c.lat, c.lng); }; }
+  { const fe = $('#form-envoi'), bp = $('#btn-position-envoi');
+    ameliorerSaisie(fe.texte, { cle: () => 'mt:' + (filtreMessages === 'direct' ? 'direct:' + (fe.vers.value || '') : filtreMessages), apres: bp && bp.parentElement,
+      noms: () => [...etat.noeuds.values()].filter((n) => n.dernierVu && Date.now() - n.dernierVu < 7 * 86400000).flatMap((n) => [n.nomCourt, n.nomLong]) }); }
   { const g = $('#groupe-noeuds'); if (g) { try { g.value = localStorage.getItem('gaulix_groupe') || ''; } catch { /* ignoré */ } g.hidden = !etat.membre; g.onchange = () => { try { localStorage.setItem('gaulix_groupe', g.value); } catch { /* ignoré */ } rendreNoeuds(); }; } }
   $('#fenetre').onchange = chargerLiens;
   document.querySelectorAll('.bascule').forEach((b) => (b.onclick = () => {
@@ -6052,7 +6362,7 @@ function brancherInterface() {
     etat.couches[c] = !etat.couches[c];
     b.classList.toggle('actif', etat.couches[c]);
     if (c) ecrireLs('gaulix_couches', etat.couches); // choix gardé pour la prochaine visite
-    if (c === 'inactifs') { dessinerNoeuds(); rendreLegende(); } else if (c === 'sommets') dessinerSommets(); else if (c === 'animations') { if (typeof dessinerAxes === 'function') dessinerAxes(); } else if (c === 'federation') dessinerFederation(); else if (c === 'routiers') dessinerRoutiers(); else if (c === 'releves') dessinerReleves(); else dessinerLiens();
+    if (c === 'inactifs') { dessinerNoeuds(); rendreLegende(); } else if (c === 'sommets') dessinerSommets(); else if (c === 'animations') { if (typeof dessinerAxes === 'function') dessinerAxes(); } else if (c === 'federation') dessinerFederation(); else if (c === 'routiers') dessinerRoutiers(); else if (c === 'dfci') dessinerDfci(); else if (c === 'radar') dessinerRadar(); else if (c === 'feux') dessinerFeux(); else if (c === 'releves') dessinerReleves(); else dessinerLiens();
   }));
   $('#filtres').onclick = (e) => {
     const b = e.target.closest('button[data-port]');
@@ -6063,7 +6373,7 @@ function brancherInterface() {
     chargerFlux();
   };
   carte.on('zoomend', () => { dessinerNoeuds(); if (typeof mcDessinerNoeuds === 'function') mcDessinerNoeuds(); });
-  { let m = null; carte.on('moveend', () => { clearTimeout(m); m = setTimeout(dessinerSommets, 150); }); }
+  { let m = null; carte.on('moveend', () => { clearTimeout(m); m = setTimeout(() => { dessinerSommets(); dessinerDfci(); }, 150); }); }
   $('#btn-couvrir').onclick = () => { basculerMode(etat.modeCarte === 'couvrir' ? null : 'couvrir'); if (etat.modeProfil) $('#btn-profil').click(); };
   $('#btn-couv-ici').onclick = () => { basculerMode(etat.modeCarte === 'ici' ? null : 'ici'); if (etat.modeProfil) $('#btn-profil').click(); };
   $('#btn-relier').onclick = () => { etat.relierA = null; basculerMode(etat.modeCarte === 'relier' ? null : 'relier'); if (etat.modeProfil) $('#btn-profil').click(); };
@@ -6082,7 +6392,7 @@ function brancherInterface() {
   carte.on('contextmenu', (e) => {
     const div = L.DomUtil.create('div', 'menu-contexte');
     const lat = e.latlng.lat, lon = e.latlng.lng;
-    div.innerHTML = `<div class="ctx-coords"><b class="mono">${lat.toFixed(5)}, ${lon.toFixed(5)}</b><button class="mini" data-copier="${lat.toFixed(5)}, ${lon.toFixed(5)}">Copier</button></div>${etat.membre ? '<button data-a="signaler">🚩 Signaler un événement ici</button><button data-a="partager">📍 Partager ce point dans un message</button>' : ''}<button data-a="ici">Couverture depuis ici</button><button data-a="couvrir">Couvrir ce point (4 points hauts)</button><button data-a="relier">${etat.modeCarte === 'relier' && etat.relierA ? 'Relier jusqu’ici (arrivée)' : 'Relier depuis ici (relais nécessaires)'}</button><button data-a="profil">${etat.modeProfil && etat.modeProfil.a ? 'Profil jusqu’ici (point B)' : 'Profil depuis ici (point A)'}</button>`;
+    div.innerHTML = `<div class="ctx-coords"><b class="mono">${lat.toFixed(5)}, ${lon.toFixed(5)}</b><button class="mini" data-copier="${lat.toFixed(5)}, ${lon.toFixed(5)}">Copier</button></div>${etat.membre ? (masquee('signalements') ? '' : '<button data-a="signaler">🚩 Signaler un événement ici</button>') + '<button data-a="partager">📍 Partager ce point dans un message</button>' : ''}<button data-a="ici">Couverture depuis ici</button><button data-a="couvrir">Couvrir ce point (4 points hauts)</button><button data-a="relier">${etat.modeCarte === 'relier' && etat.relierA ? 'Relier jusqu’ici (arrivée)' : 'Relier depuis ici (relais nécessaires)'}</button><button data-a="profil">${etat.modeProfil && etat.modeProfil.a ? 'Profil jusqu’ici (point B)' : 'Profil depuis ici (point A)'}</button>`;
     const pop = L.popup({ closeButton: false, className: 'popup-contexte' }).setLatLng(e.latlng).setContent(div).openOn(carte);
     div.onclick = (ev) => {
       const a = ev.target.closest('button');
@@ -6119,7 +6429,7 @@ function brancherInterface() {
   };
   { const bc = $('#btn-chercher-reglage'); if (bc) bc.onclick = ouvrirRechercheReglages; }
   { const bf = $('#outil-france'); if (bf) { bf.hidden = !etat.admin; bf.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheFrance(); }; } }
-  { const bs = $('#outil-signalements'); if (bs) bs.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheSignalements(); }; }
+  { const bs = $('#outil-signalements'); if (bs) bs.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; if (masquee('signalements')) ficheAlertesOff(); else ficheSignalements(); }; }
   { const bt = $('#outil-trafic'); if (bt) bt.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheTrafic(); }; }
   { const bc = $('#outil-connecter'); if (bc) bc.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ouvrirConnexion(); }; }
   $('#outil-portee').onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; testPortee(null); };
@@ -6611,12 +6921,15 @@ async function rendrePasserelle(complet) {
       <p class="note">Choisissez un canal de chaque côté (canaux du module Meshtastic principal et du companion MeshCore), le sens, puis « Créer la liaison ». Les messages relayés partent par ces deux modules.</p>
       <div class="pp-colonnes"><div><h3>Canal Meshtastic</h3>${col(m.mt.canaux, 'mt')}</div>
         <div class="pp-sens">${Object.entries(ppSens).map(([k, v]) => `<button class="mini ${pp.sens === k ? 'actif' : ''}" data-sens="${k}">${v}</button>`).join('')}
-          <label class="case"><input type="checkbox" id="pp-coal"> Regrouper (${g.coalescenceS} s)</label><button class="principal" id="pp-creer">Créer la liaison</button></div>
+          <label class="case"><input type="checkbox" id="pp-coal"> Regrouper (${g.coalescenceS} s)</label>
+          <label class="case" title="Positions des nœuds relayées en texte avec le code DFCI : Meshtastic → paquets de position du canal ; MeshCore → annonces des companions. Au plus une toutes les ${g.positionsMin} min par nœud, et seulement s’il a bougé"><input type="checkbox" id="pp-pos"> 📍 Positions</label>
+          <label class="case" title="Signalements reçus par radio (points de passage Bipper, GerMaCrise, appli Meshtastic) relayés en texte avec le code DFCI ; coordonnées d’un message complétées du code DFCI"><input type="checkbox" id="pp-sig"> ⚠️ Signalements</label>
+          <button class="principal" id="pp-creer">Créer la liaison</button></div>
         <div><h3>Canal MeshCore</h3>${col(m.mc.canaux, 'mc')}</div></div>
       ${pp.choixMt || pp.choixMc ? `<p class="note pp-resume">Liaison : <b>MT #${esc(pp.choixMt ? pp.choixMt.nom : '?')}</b> ${ppSens[pp.sens] ? esc(ppSens[pp.sens]).replace(/MT|MC/g, '') : '⇄'} <b>MC ${esc(pp.choixMc ? (pp.choixMc.nom.startsWith('#') ? pp.choixMc.nom : '#' + pp.choixMc.nom) : '?')}</b></p>` : ''}
       <p class="erreur" id="pp-retour"></p>
       <h3>Règles</h3>
-      ${d.regles.length ? `<table class="voisins"><thead><tr><th>Liaison</th><th>Regrouper</th><th>Active</th><th></th></tr></thead><tbody>${d.regles.map((x) => `<tr data-id="${x.id}"><td><b>${esc(x.libelle)}</b>${x.enAttente ? ` <small>· ${x.enAttente} en attente</small>` : ''}
+      ${d.regles.length ? `<table class="voisins"><thead><tr><th>Liaison</th><th>Regrouper</th><th title="Positions des nœuds, avec le code DFCI">📍</th><th title="Signalements (points de passage) et coordonnées, avec le code DFCI">⚠️</th><th>Active</th><th></th></tr></thead><tbody>${d.regles.map((x) => `<tr data-id="${x.id}"><td><b>${esc(x.libelle)}</b>${x.enAttente ? ` <small>· ${x.enAttente} en attente</small>` : ''}
         <details class="pp-filtres"><summary>Filtres${Object.values(x.filtres || {}).some((v) => v && v !== 2) ? ' (réglés)' : ''}</summary>
           <label>Expéditeurs bloqués <input data-f="expediteurs" value="${esc((x.filtres || {}).expediteurs || '')}" placeholder="noms ou !id, séparés par des virgules"></label>
           <label>Mot requis <input data-f="motRequis" value="${esc((x.filtres || {}).motRequis || '')}" placeholder="vide = tout"></label>
@@ -6624,7 +6937,7 @@ async function rendrePasserelle(complet) {
           <label>Longueur min. <input data-f="longueurMin" type="number" min="1" max="50" value="${(x.filtres || {}).longueurMin || 2}"></label>
           <label>Heures silencieuses <input data-f="silence" value="${esc((x.filtres || {}).silence || '')}" placeholder="ex. 22-7"></label>
           <button class="mini principal" data-filtres>Enregistrer les filtres</button></details></td>
-        <td><input type="checkbox" data-coal ${x.coalescence ? 'checked' : ''}></td><td><input type="checkbox" data-actif ${x.actif ? 'checked' : ''}></td><td><button class="mini" data-suppr>✕</button></td></tr>`).join('')}</tbody></table>` : '<div class="vide">Aucune liaison : choisissez un canal de chaque côté ci-dessus, puis « Créer la liaison ».</div>'}
+        <td><input type="checkbox" data-coal ${x.coalescence ? 'checked' : ''}></td><td><input type="checkbox" data-pos title="Relayer les positions" ${x.positions ? 'checked' : ''}></td><td><input type="checkbox" data-sig title="Relayer les signalements" ${x.signalements ? 'checked' : ''}></td><td><input type="checkbox" data-actif ${x.actif ? 'checked' : ''}></td><td><button class="mini" data-suppr>✕</button></td></tr>`).join('')}</tbody></table>` : '<div class="vide">Aucune liaison : choisissez un canal de chaque côté ci-dessus, puis « Créer la liaison ».</div>'}
       <details class="pp-essai"><summary>🧪 Essayer un message (rien n’est envoyé)</summary>
         <div class="parametres compact"><label>Arrive par <select id="pe-reseau"><option value="mt">Meshtastic</option><option value="mc">MeshCore</option></select></label>
           <label>Canal <input id="pe-canal" placeholder="ADRASEC43"></label><label>Expéditeur <input id="pe-nom" value="F4XYZ"></label><label>Texte <input id="pe-texte" value="essai de liaison"></label></div>
@@ -6655,12 +6968,14 @@ async function rendrePasserelle(complet) {
     z.querySelectorAll('[data-sens]').forEach((b) => (b.onclick = () => { pp.sens = b.dataset.sens; rendrePasserelle(true); }));
     $('#pp-creer').onclick = async () => {
       if (pp.choixMt == null || pp.choixMc == null) { $('#pp-retour').textContent = 'Choisissez un canal de chaque côté.'; return; }
-      try { await postJson('/api/passerelle/regles', { mt: pp.choixMt.index, mtNom: pp.choixMt.nom, mc: pp.choixMc.index, mcNom: pp.choixMc.nom, sens: pp.sens, coalescence: $('#pp-coal').checked }); pp.choixMt = pp.choixMc = null; rendrePasserelle(true); } catch (e) { $('#pp-retour').textContent = e.message; }
+      try { await postJson('/api/passerelle/regles', { mt: pp.choixMt.index, mtNom: pp.choixMt.nom, mc: pp.choixMc.index, mcNom: pp.choixMc.nom, sens: pp.sens, coalescence: $('#pp-coal').checked, positions: $('#pp-pos').checked, signalements: $('#pp-sig').checked }); pp.choixMt = pp.choixMc = null; rendrePasserelle(true); } catch (e) { $('#pp-retour').textContent = e.message; }
     };
     z.querySelectorAll('tr[data-id]').forEach((tr) => {
       const id = tr.dataset.id, maj = async (o) => { try { await postJson(`/api/passerelle/regles/${id}`, o); } catch (e) { alert(e.message); } rendrePasserelle(true); };
       tr.querySelector('[data-actif]').onchange = (e) => maj({ actif: e.target.checked });
       tr.querySelector('[data-coal]').onchange = (e) => maj({ coalescence: e.target.checked });
+      tr.querySelector('[data-pos]').onchange = (e) => maj({ positions: e.target.checked });
+      tr.querySelector('[data-sig]').onchange = (e) => maj({ signalements: e.target.checked });
       tr.querySelector('[data-filtres]').onclick = () => maj({ filtres: Object.fromEntries([...tr.querySelectorAll('[data-f]')].map((i) => [i.dataset.f, i.value])) });
       tr.querySelector('[data-suppr]').onclick = async () => { if (!(await confirmer('Supprimer cette liaison ?'))) return; await fetch(`/api/passerelle/regles/${id}`, { method: 'DELETE' }); rendrePasserelle(true); };
     });
@@ -6694,10 +7009,11 @@ async function rendrePasserelle(complet) {
         <label>Messages par minute, toute la passerelle <input name="quotaGlobalMin" type="number" min="1" max="120" value="${g.quotaGlobalMin}"></label>
         <label>File d’attente max. (au-delà : les plus anciens abandonnés) <input name="fileMax" type="number" min="1" max="50" value="${g.fileMax}"></label>
         <label>Écart minimal entre deux émissions sur un réseau (s) <input name="ecartEnvoiS" type="number" min="2" max="60" value="${g.ecartEnvoiS}"></label>
+        <label>Positions : une au plus par nœud toutes les (min) <input name="positionsMin" type="number" min="5" max="240" value="${g.positionsMin || 15}"></label>
         <label>Fenêtre de regroupement <select name="coalescenceS">${[10, 30, 60].map((v) => `<option value="${v}" ${g.coalescenceS === v ? 'selected' : ''}>${v} s</option>`).join('')}</select></label>
       </form>
       <div class="actions"><button class="principal" id="pp-enreg">Enregistrer</button></div><p class="erreur" id="pp-retour"></p>
-      <p class="note">Toujours actifs : un message envoyé par nos propres modules n’est jamais repris (anti-écho), un texte commençant par un préfixe de passerelle n’est jamais retransmis (anti-boucle). Messages texte de canal uniquement ; rien n’apparaît sur la carte publique.</p>`;
+      <p class="note">Toujours actifs : un message envoyé par nos propres modules n’est jamais repris (anti-écho), un texte commençant par un préfixe de passerelle n’est jamais retransmis (anti-boucle). Messages texte de canal, et selon la liaison les positions et les signalements (en texte, avec le code DFCI) ; rien n’apparaît sur la carte publique.</p>`;
     $('#pp-enreg').onclick = async () => {
       const f = $('#pp-form'), o = {};
       for (const el of f.elements) if (el.name) o[el.name] = el.type === 'checkbox' ? el.checked : el.value;
@@ -6782,6 +7098,35 @@ function appliquerTheme(clair) {
 let invitationInstall = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); invitationInstall = e; const b = $('#outil-installer'); if (b) b.hidden = false; });
 
+// Restauration d'une sauvegarde complète (.tar.gz) : envoi avec avancement, puis redémarrage de la carte
+function choisirEtRestaurer({ code = '', zone = null } = {}) {
+  const champ = document.createElement('input');
+  champ.type = 'file'; champ.accept = '.gz,.tgz,application/gzip';
+  champ.onchange = async () => {
+    const fichier = champ.files[0];
+    if (!fichier) return;
+    const mo = (fichier.size / 1048576).toFixed(fichier.size > 10485760 ? 0 : 1);
+    if (!(await confirmer(`Restaurer « ${fichier.name} » (${mo} Mo) ? La base, les réglages et les comptes actuels seront remplacés par ceux de la sauvegarde (l'état actuel est gardé à part, dans le dossier des données « avant-restauration-… »), puis la carte redémarrera.`, { ok: 'Restaurer' }))) return;
+    const montrer = (t) => { if (zone) zone.textContent = t; else annonce(t); };
+    montrer('⏳ Envoi : 0 %');
+    try {
+      const r = await new Promise((ok, ko) => {
+        const x = new XMLHttpRequest();
+        x.open('POST', '/api/restauration-complete' + (code ? '?code=' + encodeURIComponent(code) : ''));
+        x.setRequestHeader('Content-Type', 'application/octet-stream');
+        x.upload.onprogress = (e) => { if (e.lengthComputable) montrer(`⏳ Envoi : ${Math.round((100 * e.loaded) / e.total)} %${e.loaded === e.total ? ' · vérification de l’archive…' : ''}`); };
+        x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch { /* réponse vide */ } if (x.status >= 200 && x.status < 300) ok(j); else ko(new Error(j.erreur || 'HTTP ' + x.status)); };
+        x.onerror = () => ko(new Error('envoi interrompu'));
+        x.send(fichier);
+      });
+      montrer(`✅ Sauvegarde reçue (${r.fichiers} fichiers)`);
+      document.querySelectorAll('dialog[open]').forEach((d) => d.close());
+      attendreRedemarrage('Restauration en cours ✓');
+    } catch (e) { montrer('❌ ' + e.message); }
+  };
+  champ.click();
+}
+
 async function installation() {
   const info = await api('/api/installation');
   if (!info.requise) return false;
@@ -6822,6 +7167,7 @@ async function installation() {
     } catch (e) { z.textContent = '❌ ' + e.message; }
     bt.disabled = false;
   }; }
+  { const bt = $('#inst-restaurer'); if (bt) bt.onclick = () => choisirEtRestaurer({ code: f.code.value, zone: $('#inst-restauration') }); }
   dlg.addEventListener('cancel', (e) => e.preventDefault()); // non refermable tant que l'installation n'est pas faite
   dlg.showModal();
   return true;
@@ -6829,11 +7175,23 @@ async function installation() {
 
 async function demarrer() {
   etat.config = await api('/api/config');
+  // Mode consultation (?consultation, lien « Explorer en détail » de la carte publique) : tout en lecture, aucune
+  // action d'écriture ni d'émission radio, même pour un compte connecté. Le serveur refuse de toute façon ces
+  // actions à un visiteur ; ici on retire aussi les boutons.
+  etat.consultation = new URLSearchParams(location.search).has('consultation');
+  if (etat.consultation) { etat.config.admin = false; etat.config.gestion = false; etat.config.membre = false; document.body.classList.add('consultation'); }
   etat.admin = etat.config.admin;
   etat.gestion = !!etat.config.gestion;
   etat.secteur = etat.admin ? null : (etat.config.compte && etat.config.compte.noeuds) || [];
   etat.membre = etat.config.membre;
+  if (etat.consultation) {
+    const b = document.createElement('div');
+    b.className = 'bandeau-consultation';
+    b.innerHTML = `👁️ Consultation : tout se lit, rien ne se modifie ni ne s’envoie par radio. <a href="/publique">Carte simple</a>${etat.config.compte ? ' · <a href="/">Mon espace</a>' : ''}`;
+    document.body.appendChild(b);
+  }
   document.title = etat.config.titre;
+  setTimeout(() => { try { appliquerFonctionsMasquees(); } catch { /* carte pas encore prête */ } }, 0);
   // Couches : masquées par défaut sur cette carte (CARTE_COUCHES_MASQUEES), puis choix du visiteur
   for (const c of etat.config.couchesMasquees || []) if (c in etat.couches) etat.couches[c] = false;
   // Téléphone ou tablette, sans choix enregistré : pas d'animation des paquets (coûteuse sur mobile)
@@ -6842,6 +7200,8 @@ async function demarrer() {
   if (!choixCouches && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || economie)) etat.couches.animations = false;
   Object.assign(etat.couches, Object.fromEntries(Object.entries(choixCouches || {}).filter(([k, v]) => k in etat.couches && typeof v === 'boolean')));
   document.querySelectorAll('.bascule[data-couche]').forEach((b) => b.classList.toggle('actif', !!etat.couches[b.dataset.couche]));
+  if (etat.couches.radar) dessinerRadar();
+  if (etat.couches.feux) dessinerFeux();
   // Liens vers le client et le flasheur officiels (Web Serial / Web Bluetooth : HTTPS et Chrome ou Edge obligatoires)
   {
     const o = etat.config.outils || {}, https = location.protocol === 'https:';
@@ -6852,7 +7212,7 @@ async function demarrer() {
     const chromium = !!(navigator.userAgentData && navigator.userAgentData.brands && navigator.userAgentData.brands.some((b) => /Chrom|Edge/i.test(b.brand)));
     if (note) note.textContent = !https ? 'USB et Bluetooth demandent la carte en HTTPS (voir README).' : !('serial' in navigator) && !chromium ? 'USB et Bluetooth : utilisez Chrome ou Edge.' : '';
   }
-  const nomMarque = document.querySelector('.marque .nom');
+  const nomMarque = document.querySelector('.marque .nom-carte');
   if (nomMarque) nomMarque.textContent = etat.config.titre.split(' · ')[0];
   const marque = document.querySelector('.marque .sous');
   if (marque) marque.textContent = `Carte live · ${etat.config.zoneNom}`;
@@ -6877,6 +7237,8 @@ async function demarrer() {
   connecterWs();
   // Lien direct vers la fiche d'un nœud (?noeud=NUM, ex. depuis la page Topologie)
   { const pn = Number(new URLSearchParams(location.search).get('noeud')) >>> 0; if (pn && etat.noeuds.has(pn)) setTimeout(() => ouvrirFiche(pn), 300); }
+  // ?vue=lat,lon,zoom (lien « Explorer en détail » de la carte publique) : reprendre la même vue
+  { const v = (new URLSearchParams(location.search).get('vue') || '').split(',').map(Number); if (v.length === 3 && v.every(Number.isFinite)) setTimeout(() => carte.setView([v[0], v[1]], v[2]), 200); }
   if (typeof demarrerMeshcore === 'function') demarrerMeshcore();
   chargerRelief();
   chargerAsymetrie(); setInterval(chargerAsymetrie, 120000);
@@ -6888,6 +7250,7 @@ async function demarrer() {
   chargerFederation(); setInterval(chargerFederation, 600000);
   demarrerTerrain();
   if (etat.membre) chargerSignalements();
+  if (etat.membre) chargerResponsables();
   chargerActiviteInitiale();
   setInterval(rendreLegende, 60000);
   if (etat.config.installation) installation();
@@ -7562,3 +7925,290 @@ async function rendreArchive() {
   };
 }
 
+
+// ---- Carroyage DFCI (couche « DFCI ») : 100 km, 20 km, 2 km selon le zoom, codes au centre des carrés ----
+let coucheDfci = null;
+function dessinerDfci() {
+  if (coucheDfci) { coucheDfci.remove(); coucheDfci = null; }
+  if (!etat.couches.dfci || !window.DFCI) return;
+  const z = carte.getZoom();
+  const pas = z >= 12 ? 2000 : z >= 9 ? 20000 : 100000;
+  const b = carte.getBounds();
+  const coins = [b.getSouthWest(), b.getNorthWest(), b.getNorthEast(), b.getSouthEast(), b.getCenter()]
+    .map((p) => DFCI.versLambert2e(Math.min(52, Math.max(40.5, p.lat)), Math.min(10.5, Math.max(-6, p.lng))));
+  const x0 = Math.max(0, Math.floor(Math.min(...coins.map((c) => c[0])) / pas) * pas), x1 = Math.min(1200000, Math.ceil(Math.max(...coins.map((c) => c[0])) / pas) * pas);
+  const y0 = Math.max(1500000, Math.floor(Math.min(...coins.map((c) => c[1])) / pas) * pas), y1 = Math.min(2700000, Math.ceil(Math.max(...coins.map((c) => c[1])) / pas) * pas);
+  if (x1 <= x0 || y1 <= y0 || ((x1 - x0) / pas) * ((y1 - y0) / pas) > 900) return;
+  coucheDfci = L.layerGroup().addTo(carte);
+  const style = { color: '#ff7a1a', weight: pas === 100000 ? 2.5 : pas === 20000 ? 1.8 : 1, opacity: 0.85, interactive: false, pane: 'traces' };
+  const seg = Math.max(2, Math.round((pas === 2000 ? 1 : 4)));
+  const ligne = (pts) => L.polyline(pts.map(([x, y]) => DFCI.depuisLambert2e(x, y)), style).addTo(coucheDfci);
+  for (let x = x0; x <= x1; x += pas) { const pts = []; for (let y = y0; y <= y1; y += pas / seg) pts.push([x, y]); ligne(pts); }
+  for (let y = y0; y <= y1; y += pas) { const pts = []; for (let x = x0; x <= x1; x += pas / seg) pts.push([x, y]); ligne(pts); }
+  // Codes au centre des carrés (pas trop nombreux)
+  const nb = ((x1 - x0) / pas) * ((y1 - y0) / pas);
+  if (nb <= 400) {
+    for (let x = x0; x < x1; x += pas) for (let y = y0; y < y1; y += pas) {
+      const [lat, lon] = DFCI.depuisLambert2e(x + pas / 2, y + pas / 2);
+      const code = DFCI.versDfci(lat, lon, false);
+      if (!code) continue;
+      const t = pas === 100000 ? code.slice(0, 2) : pas === 20000 ? code.slice(0, 4) : code;
+      L.marker([lat, lon], { icon: L.divIcon({ className: 'etiquette-dfci', html: `<span>${t}</span>`, iconSize: [80, 16], iconAnchor: [40, 8] }), interactive: false, keyboard: false, pane: 'traces' }).addTo(coucheDfci);
+    }
+  }
+  // Zoom fort : les 5 zones du carreau (carré central de 1 km et croix)
+  if (z >= 15) {
+    for (let x = x0; x < x1; x += 2000) for (let y = y0; y < y1; y += 2000) {
+      const st = { ...style, weight: 1, dashArray: '4 4', opacity: 0.6 };
+      L.polyline([[x + 500, y + 500], [x + 1500, y + 500], [x + 1500, y + 1500], [x + 500, y + 1500], [x + 500, y + 500]].map(([a, c]) => DFCI.depuisLambert2e(a, c)), st).addTo(coucheDfci);
+      L.polyline([[x + 1000, y], [x + 1000, y + 500]].map(([a, c]) => DFCI.depuisLambert2e(a, c)), st).addTo(coucheDfci);
+      L.polyline([[x + 1000, y + 1500], [x + 1000, y + 2000]].map(([a, c]) => DFCI.depuisLambert2e(a, c)), st).addTo(coucheDfci);
+      L.polyline([[x, y + 1000], [x + 500, y + 1000]].map(([a, c]) => DFCI.depuisLambert2e(a, c)), st).addTo(coucheDfci);
+      L.polyline([[x + 1500, y + 1000], [x + 2000, y + 1000]].map(([a, c]) => DFCI.depuisLambert2e(a, c)), st).addTo(coucheDfci);
+      for (const [k, fx, fy] of [[1, 250, 1750], [2, 1750, 1750], [3, 1750, 250], [4, 250, 250], [5, 1000, 1000]]) {
+        const [la, lo] = DFCI.depuisLambert2e(x + fx, y + fy);
+        L.marker([la, lo], { icon: L.divIcon({ className: 'etiquette-dfci zone', html: `<span>.${k}</span>`, iconSize: [24, 14], iconAnchor: [12, 7] }), interactive: false, keyboard: false, pane: 'traces' }).addTo(coucheDfci);
+      }
+    }
+  }
+}
+
+// ---- Alertes officielles : vigilance Météo-France, Vigipirate, FR-Alert relayées --------------------------
+const ao = { info: null };
+async function chargerAlertesOff() {
+  try { ao.info = await api('/api/alertes-officielles'); } catch { return; }
+  majChipAlertes();
+  const f = $('#fiche-contenu');
+  if (f && !$('#fiche').hidden && f.querySelector('.alertes-off') && !f.contains(document.activeElement)) (etat.membre && !masquee('signalements') ? ficheSignalements() : ficheAlertesOff());
+}
+const ICONES_VIG = { jaune: '🟡', orange: '🟠', rouge: '🔴' };
+// Fonctions masquées par l'administrateur (Réglages › Fonctions affichées, ou FONCTIONS_MASQUEES dans le .env)
+const masquee = (f) => ((etat.config && etat.config.fonctionsMasquees) || []).includes(f);
+function appliquerFonctionsMasquees() {
+  const b = $('#outil-signalements');
+  if (b) { b.textContent = masquee('signalements') ? '🌦️ Alertes météo' : '🚩 Signalements'; b.title = masquee('signalements') ? 'Vigilance Météo-France' : 'Événements signalés sur la carte et diffusés en LoRa'; }
+  if (sig.couche) { if (masquee('signalements')) sig.couche.remove(); else if (!carte.hasLayer(sig.couche)) sig.couche.addTo(carte); }
+  { const bf = document.querySelector('.bascule[data-couche="feux"]'); if (bf) bf.hidden = masquee('feux'); if (masquee('feux') && coucheFeux) { coucheFeux.remove(); coucheFeux = null; } }
+  majChipAlertes();
+  if (typeof rendreAccueil === 'function') { try { rendreAccueil(); } catch { /* panneau absent */ } }
+}
+function majChipAlertes() {
+  const c = $('#chip-alertes');
+  if (!c || !ao.info) return;
+  const r = ao.info;
+  const dep = String((etat.config.departement || {}).code || '');
+  const local = (r.meteo || []).filter((a) => a.dep === dep);
+  const bouts = [];
+  const pire = local.sort((a, b) => ({ jaune: 1, orange: 2, rouge: 3 }[b.couleur] - { jaune: 1, orange: 2, rouge: 3 }[a.couleur]))[0];
+  if (pire) bouts.push(`${ICONES_VIG[pire.couleur]} ${esc(pire.phenomene)}${local.length > 1 ? ` +${local.length - 1}` : ''}`);
+  const vigi = !masquee('vigipirate') && r.vigipirate, fr = !masquee('fr-alert') && (r.frAlert || []).length;
+  if (vigi) bouts.push(`${r.vigipirate.icone} ${r.vigipirate.niveau === 'urgence' ? 'Urgence attentat' : 'Vigipirate'}`);
+  if (fr) bouts.push('📢 FR-Alert');
+  c.hidden = !bouts.length;
+  c.className = 'chip-alertes ' + (pire ? 'vig-' + pire.couleur : '') + (vigi && r.vigipirate.niveau === 'urgence' || fr ? ' vig-rouge' : '');
+  c.innerHTML = bouts.join(' · ');
+  c.title = 'Alertes officielles : vigilance Météo-France, Vigipirate, FR-Alert (cliquer pour le détail)';
+  c.onclick = () => (etat.membre && !masquee('signalements') ? ficheSignalements() : ficheAlertesOff());
+}
+function blocAlertesOff() {
+  const r = ao.info;
+  if (!r) { chargerAlertesOff(); return '<div class="alertes-off"><h3>🌦️ Alertes officielles</h3><p class="note">Chargement…</p></div>'; }
+  const h = (t) => t ? new Date(t).toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const meteo = (r.meteo || []);
+  const feuxZone = masquee('feux') ? [] : (etat.alertes || []).filter((a) => a.type === 'feu');
+  // Canaux d'envoi à la demande : dernier choix mémorisé dans ce navigateur, sinon ceux de la diffusion automatique
+  const choixEnv = lireLs('gaulix_canaux_envoi', null);
+  const mcChoisi = choixEnv && (r.envoi && r.envoi.canauxMc || []).includes(choixEnv.mc) ? choixEnv.mc : choixEnv && choixEnv.mc === '' ? '' : (rg.canalMc || (r.envoi && r.envoi.canauxMc[0]));
+  const mtCoche = (c) => (choixEnv ? (choixEnv.mt || []).some((x) => x.toLowerCase() === c.toLowerCase()) : (rg.canaux || []).some((x) => x.toLowerCase() === c.toLowerCase()) && !r.envoi.canauxMc.length);
+  const nv = r.niveauxVigipirate || {};
+  const rg = r.reglages || {};
+  return `<div class="alertes-off"><h3>🌦️ Alertes officielles</h3>
+    <h4>Vigilance Météo-France${(rg.departements || []).length > 1 ? ` (${rg.departements.length} départements)` : ''}</h4>
+    ${(meteo.length || feuxZone.length) && etat.gestion && r.envoi && (r.envoi.canauxMc.length || r.envoi.canauxMt.length) ? `<div class="ao-envoi"><b>📡 Envoyer une vigilance par radio</b> — canaux :
+      ${r.envoi.canauxMc.length ? `<label>MeshCore <select id="ao-env-mc"><option value="">— aucun —</option>${r.envoi.canauxMc.map((c) => `<option ${mcChoisi === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}
+      ${r.envoi.canauxMt.length ? `<span class="ao-env-mt">Meshtastic ${r.envoi.canauxMt.map((c) => `<label class="case"><input type="checkbox" value="${esc(c)}" ${mtCoche(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}</span>` : ''}
+      <small class="note">puis le bouton 📡 de la vigilance ou du foyer voulu.</small></div>` : ''}
+    ${meteo.length ? meteo.map((a) => `<div class="vig-ligne vig-${a.couleur}">${etat.gestion && r.envoi && (r.envoi.canauxMc.length || r.envoi.canauxMt.length) ? `<button type="button" class="mini ao-env-btn" data-ao-env="${esc(a.dep)}|${esc(a.phenomene)}" title="Envoyer maintenant cette vigilance sur les canaux choisis">📡 Envoyer</button>` : ''}<b>${ICONES_VIG[a.couleur]} Vigilance ${a.couleur} ${esc(a.phenomene)}</b> · ${esc(a.depNom)}<small>${a.debut ? 'du ' + h(a.debut) : ''}${a.fin ? ' au ' + h(a.fin) : ''}${a.envois ? ' · diffusée en LoRa' : ''}</small></div>`).join('') : `<p class="note">${r.erreur ? '⚠ Vigilance indisponible : ' + esc(r.erreur) : 'Aucune vigilance en cours.'}</p>`}
+    <p class="note">Source : Météo-France, par le flux public MeteoAlarm (mis à jour toutes les 10 min${r.maj ? ', lu ' + ilYa(r.maj) : ''}).</p>
+    ${masquee('feux') ? '' : `<h4>🔥 Feux actifs (satellite)</h4>
+    ${feuxZone.length ? feuxZone.map((a) => `<div class="vig-ligne vig-${a.niveau === 'critique' ? 'rouge' : 'orange'}">${etat.gestion && r.envoi && (r.envoi.canauxMc.length || r.envoi.canauxMt.length) ? `<button type="button" class="mini ao-env-btn" data-feu-env="${esc(a.cle)}" title="Envoyer maintenant ce foyer sur les canaux choisis">📡 Envoyer</button>` : ''}<a href="#" data-feu-voir="${a.lat},${a.lon}">${esc(a.message)}</a></div>`).join('') : '<p class="note">Aucun foyer détecté dans la zone de la carte ces 12 dernières heures.</p>'}
+    <p class="note">Source : NASA FIRMS (satellites VIIRS et MODIS), lu toutes les 30 min, et Meteosat toutes les 15 min si un compte LSA SAF est renseigné (voir le Diagnostic). Un foyer satellite n’est pas une alerte officielle : 1 à 3 h de retard, fausses détections possibles (brûlage agricole, torchère, toiture chaude). Couche « Feux actifs » dans Couches.</p>`}
+    ${masquee('vigipirate') ? '' : `<h4>Vigipirate</h4>
+    <p>${r.vigipirate ? `<b>${r.vigipirate.icone} ${esc(r.vigipirate.nom)}</b> <small>réglé par ${esc(r.vigipirate.par || '?')} ${ilYa(r.vigipirate.depuis)}</small>` : '<span class="note">Niveau non renseigné.</span>'}</p>
+    ${etat.gestion ? `<div class="parametres compact"><label>Niveau <select id="ao-vigi"><option value="">— non renseigné —</option>${Object.entries(nv).map(([k, v]) => `<option value="${k}" ${r.vigipirate && r.vigipirate.niveau === k ? 'selected' : ''}>${v.icone} ${esc(v.nom)}</option>`).join('')}</select></label>
+      <label class="case"><input type="checkbox" id="ao-vigi-annoncer"> Annoncer en LoRa</label></div><div class="actions-prop"><button type="button" class="mini principal" id="ao-vigi-ok">Enregistrer le niveau</button></div>
+      <p class="note">Le niveau Vigipirate n’a pas de flux officiel lisible par un programme : il se règle ici (site du SGDSN ou consignes de la préfecture).</p>` : ''}`}
+    ${masquee('fr-alert') ? '' : `<h4>FR-Alert</h4>
+    ${(r.frAlert || []).map((a) => `<div class="vig-ligne vig-rouge"><b>📢 FR-Alert${a.zone ? ' · ' + esc(a.zone) : ''}</b> ${esc(a.texte)}<small>relayée par ${esc(a.par)} ${ilYa(a.date)} · ${(a.envois || []).map((e) => `${esc(e.canal)} ${e.statut === 'envoye' ? '✔' : '⚠'}`).join(' ') || 'pas diffusée'}</small>${etat.gestion ? `<button type="button" class="mini" data-ao-fin="${a.id}">✅ Terminée</button>` : ''}</div>`).join('') || '<p class="note">Aucune alerte FR-Alert relayée.</p>'}
+    ${etat.gestion ? `<div class="parametres compact"><label>Zone <input id="ao-fr-zone" maxlength="80" placeholder="ex. Vallée de la Loire, Brives-Charensac"></label>
+      <label class="large-col">Texte reçu sur le téléphone <textarea id="ao-fr-texte" rows="3" maxlength="500" placeholder="Recopiez le message FR-Alert"></textarea></label></div>
+      <div class="actions-prop"><button type="button" class="mini principal" id="ao-fr-ok">📢 Relayer en LoRa</button></div>
+      <p class="note">FR-Alert passe par les antennes des téléphones et n’a pas de flux public fiable : recopiez ici le message reçu pour le relayer sur les canaux ci-dessous, au profit des équipes sans réseau mobile.</p>` : ''}`}
+    ${etat.admin ? `<details class="ao-reglages"><summary>Réglages de diffusion (administrateur)</summary><div class="parametres compact">
+      <label class="case ligne-entiere"><input type="checkbox" id="ao-diffuser" ${rg.diffuser ? 'checked' : ''}> <b>Diffusion automatique activée</b> : les nouvelles vigilances partent en LoRa (décoché : rien n’est envoyé automatiquement)</label>
+      <label>À partir de <select id="ao-niveau">${['jaune', 'orange', 'rouge'].map((c) => `<option value="${c}" ${rg.niveauMin === c ? 'selected' : ''}>${ICONES_VIG[c]} ${c}</option>`).join('')}</select></label>
+      <label>Canaux Meshtastic (noms, séparés par des virgules) <input id="ao-canaux" value="${esc((rg.canaux || []).join(', '))}"></label>
+      <label>Canal MeshCore (vide = aucun) ${(r.canauxMc || []).length ? `<select id="ao-canal-mc"><option value="">— aucun —</option>${r.canauxMc.map((c) => `<option ${rg.canalMc === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : `<input id="ao-canal-mc" value="${esc(rg.canalMc || '')}" placeholder="ex. #alerte">`}</label>
+    </div>
+    <div class="ao-deps"><b>Départements suivis</b> <small class="note">(vigilance affichée et diffusée seulement pour ceux-ci)</small><br>
+      ${[r.departementCarte, ...(r.voisins || [])].filter(Boolean).map((c) => { const d = (r.departements || []).find((x) => x.code === c); const coche = (rg.departements || []).length ? rg.departements.includes(c) : c === r.departementCarte; return `<label class="case"><input type="checkbox" data-ao-dep="${esc(c)}" ${coche ? 'checked' : ''}> ${esc(c)} · ${esc(d ? d.nom : c)}${c === r.departementCarte ? ' (carte)' : ''}</label>`; }).join('')}
+      <label>Autres départements (numéros, séparés par des virgules) <input id="ao-deps-autres" value="${esc((rg.departements || []).filter((c) => c !== r.departementCarte && !(r.voisins || []).includes(c)).join(', '))}" placeholder="ex. 07, 48"></label>
+    </div><div class="actions-prop"><button type="button" class="mini principal" id="ao-reglages-ok">Enregistrer</button></div>
+    <p class="note">Une vigilance n’est diffusée qu’une fois. Les annonces Vigipirate et FR-Alert partent sur les mêmes canaux.</p></details>` : ''}
+    <p class="erreur" id="ao-retour"></p></div>`;
+}
+function ficheAlertesOff() {
+  $('#fiche').hidden = false; etat.selection = null;
+  $('#fiche-contenu').innerHTML = `<div class="liste-signalements">${blocAlertesOff()}</div>`;
+  brancherAlertesOff();
+}
+function brancherAlertesOff() {
+  const ret = (t) => { const e = $('#ao-retour'); if (e) e.textContent = t; };
+  document.querySelectorAll('[data-ao-env]').forEach((b) => (b.onclick = async () => {
+    const [dep, phenomene] = b.dataset.aoEnv.split('|');
+    const canalMc = $('#ao-env-mc') ? $('#ao-env-mc').value : '';
+    const canaux = [...document.querySelectorAll('.ao-env-mt input:checked')].map((x) => x.value);
+    if (!canalMc && !canaux.length) { ret('Choisissez au moins un canal (MeshCore ou Meshtastic) au-dessus de la liste.'); return; }
+    const vers = [canalMc && 'MeshCore ' + canalMc, ...canaux.map((c) => 'Meshtastic ' + c)].filter(Boolean).join(', ');
+    if (!(await confirmer(`Envoyer la vigilance « ${phenomene} » maintenant sur ${vers} ?`, { ok: 'Envoyer' }))) return;
+    b.disabled = true; b.textContent = '⏳';
+    try {
+      const r = await postJson('/api/alertes-officielles/envoyer', { dep, phenomene, canalMc, canaux });
+      const pb = r.envois.filter((e) => e.statut !== 'envoye');
+      annonce(pb.length ? `⚠ ${pb.map((e) => `${e.canal} : ${e.erreur}`).join(' ; ')}` : `✔ Vigilance envoyée sur ${vers}`, pb.length ? 'erreur' : 'info');
+    } catch (e) { ret(e.message); }
+    b.disabled = false; b.textContent = '📡 Envoyer';
+  }));
+  // Mémoriser le choix des canaux d'envoi (ce navigateur)
+  const memoCanaux = () => ecrireLs('gaulix_canaux_envoi', { mc: $('#ao-env-mc') ? $('#ao-env-mc').value : '', mt: [...document.querySelectorAll('.ao-env-mt input:checked')].map((x) => x.value) });
+  if ($('#ao-env-mc')) $('#ao-env-mc').onchange = memoCanaux;
+  document.querySelectorAll('.ao-env-mt input').forEach((x) => (x.onchange = memoCanaux));
+  document.querySelectorAll('[data-feu-env]').forEach((b) => (b.onclick = async () => {
+    const canalMc = $('#ao-env-mc') ? $('#ao-env-mc').value : '';
+    const canaux = [...document.querySelectorAll('.ao-env-mt input:checked')].map((x) => x.value);
+    if (!canalMc && !canaux.length) { ret('Choisissez au moins un canal (MeshCore ou Meshtastic) au-dessus de la liste.'); return; }
+    const vers = [canalMc && 'MeshCore ' + canalMc, ...canaux.map((c) => 'Meshtastic ' + c)].filter(Boolean).join(', ');
+    if (!(await confirmer(`Envoyer ce foyer satellite maintenant sur ${vers} ?`, { ok: 'Envoyer' }))) return;
+    b.disabled = true; b.textContent = '⏳';
+    try {
+      const r = await postJson('/api/feux/envoyer', { cle: b.dataset.feuEnv, canalMc, canaux });
+      const pb = r.envois.filter((e) => e.statut !== 'envoye');
+      annonce(pb.length ? `⚠ ${pb.map((e) => `${e.canal} : ${e.erreur}`).join(' ; ')}` : `✔ Foyer envoyé sur ${vers}`, pb.length ? 'erreur' : 'info');
+    } catch (e) { ret(e.message); }
+    b.disabled = false; b.textContent = '📡 Envoyer';
+  }));
+  { const b = $('#ao-vigi-ok'); if (b) b.onclick = async () => { try { const r = await postJson('/api/vigipirate', { niveau: $('#ao-vigi').value || null, annoncer: $('#ao-vigi-annoncer').checked }); await chargerAlertesOff(); ficheSignalements(r.envois && r.envois.length ? '✔ Niveau Vigipirate enregistré et annoncé.' : '✔ Niveau Vigipirate enregistré.'); } catch (e) { ret(e.message); } }; }
+  { const b = $('#ao-fr-ok'); if (b) b.onclick = async () => {
+    if (!(await confirmer('Relayer ce message FR-Alert en LoRa sur les canaux d’alerte ?', { ok: 'Relayer' }))) return;
+    try { const a = await postJson('/api/fr-alert', { texte: $('#ao-fr-texte').value, zone: $('#ao-fr-zone').value }); await chargerAlertesOff(); const pb = (a.envois || []).filter((e) => e.statut !== 'envoye'); ficheSignalements(pb.length ? '⚠ ' + pb.map((e) => `${e.canal} : ${e.erreur}`).join(' ; ') : '✔ Alerte FR-Alert relayée.'); } catch (e) { ret(e.message); }
+  }; }
+  document.querySelectorAll('[data-ao-fin]').forEach((b) => (b.onclick = async () => { try { await postJson(`/api/fr-alert/${b.dataset.aoFin}/fin`, {}); await chargerAlertesOff(); ficheSignalements(); } catch (e) { ret(e.message); } }));
+  { const b = $('#ao-reglages-ok'); if (b) b.onclick = async () => { try { await postJson('/api/alertes-officielles/reglages', { diffuser: $('#ao-diffuser').checked, niveauMin: $('#ao-niveau').value, canaux: $('#ao-canaux').value.split(',').map((x) => x.trim()).filter(Boolean), departements: [...[...document.querySelectorAll('[data-ao-dep]')].filter((x) => x.checked).map((x) => x.dataset.aoDep), ...$('#ao-deps-autres').value.split(/[,; ]+/).map((x) => x.trim()).filter(Boolean)], canalMc: $('#ao-canal-mc').value }); await chargerAlertesOff(); ficheSignalements('✔ Réglages des alertes enregistrés.'); } catch (e) { ret(e.message); } }; }
+}
+setTimeout(chargerAlertesOff, 2500);
+setInterval(chargerAlertesOff, 5 * 60000);
+
+// ---- Statistiques d'un nœud (onglet de la fiche) ----------------------------------------------------------
+async function statistiquesNoeud(num, jours = 7) {
+  const z = $('#stats-noeud');
+  if (!z) return;
+  let r;
+  try { r = await api(`/api/noeuds/${num}/statistiques?jours=${jours}`); } catch (e) { z.className = 'vide'; z.textContent = e.message; return; }
+  z.className = 'stats-noeud';
+  if (!r.total) { z.innerHTML = `<div class="vide">Aucun paquet émis par ce nœud sur ${r.jours} jour(s).</div>`; return; }
+  const max = Math.max(1, ...r.chaleur.flat());
+  const barres = (lignes, lib, val, coul) => { const m = Math.max(1, ...lignes.map(val)); return lignes.map((l) => `<div class="barre-stat"><span>${lib(l)}</span><i style="width:${Math.round((val(l) / m) * 100)}%;background:${coul(l)}"></i><b>${val(l)}</b></div>`).join(''); };
+  const couleurSnr = (t) => (t >= 5 ? '#2dd4bf' : t >= 0 ? '#a3e635' : t >= -7.5 ? '#facc15' : t >= -12.5 ? '#fb923c' : '#f87171');
+  z.innerHTML = `<p class="note">${r.total} paquet(s) émis sur ${r.jours} jours. <select id="stats-jours">${[1, 3, 7, 14, 30].filter((j) => j <= Math.max(7, r.jours) || j <= (etat.config.retentionJours || 7)).map((j) => `<option value="${j}" ${j === r.jours ? 'selected' : ''}>${j} jour${j > 1 ? 's' : ''}</option>`).join('')}</select></p>
+    <h4>Activité heure par heure</h4>
+    <div class="chaleur" style="--n:${r.chaleur.length}"><span></span>${Array.from({ length: 24 }, (_, h) => `<span class="h">${h % 3 ? '' : h}</span>`).join('')}
+      ${r.chaleur.map((ligne, j) => `<span class="j">${esc(r.libJours[j])}</span>${ligne.map((v, h) => `<i title="${esc(r.libJours[j])} ${h} h : ${v} paquet(s)" style="opacity:${v ? 0.18 + 0.82 * (v / max) : 0.06}"></i>`).join('')}`).join('')}</div>
+    <h4>Types de paquets</h4>${barres(r.types.slice(0, 8), (t) => esc(t.type), (t) => t.nb, () => 'var(--accent, #2dd4bf)')}
+    ${r.snr.length ? `<h4>SNR reçu en direct (0 saut)</h4>${barres(r.snr, (t) => `${t.tranche} à ${t.tranche + 2.5} dB`, (t) => t.nb, (t) => couleurSnr(t.tranche))}` : ''}
+    ${r.sauts.length ? `<h4>Sauts pour arriver</h4>${barres(r.sauts, (t) => (t.sauts === 0 ? 'direct' : `${t.sauts} saut${t.sauts > 1 ? 's' : ''}`), (t) => t.nb, (t) => (t.sauts === 0 ? '#2dd4bf' : t.sauts <= 2 ? '#facc15' : '#fb923c'))}` : ''}
+    ${r.recepteurs.length ? `<h4>Qui le reçoit le plus</h4>${barres(r.recepteurs, (t) => esc(nomNoeud(t.num)) + (t.sautsMin === 0 ? ' · direct' : ''), (t) => t.nb, (t) => (t.snr != null ? couleurSnr(t.snr) : '#94a3b8'))}` : ''}`;
+  const s = $('#stats-jours'); if (s) s.onchange = () => statistiquesNoeud(num, Number(s.value));
+}
+
+// Zone de sécurité d'une équipe tracée sur la carte (cercle), avec les membres
+let coucheZoneEquipe = null;
+function montrerZoneEquipe(z, nom, cadrer) {
+  if (coucheZoneEquipe) { coucheZoneEquipe.remove(); coucheZoneEquipe = null; }
+  if (!z) return;
+  coucheZoneEquipe = L.circle([z.lat, z.lon], { radius: z.rayon, color: '#22d3ee', weight: 2, dashArray: '6 6', fillOpacity: 0.06, interactive: false }).addTo(carte);
+  coucheZoneEquipe.bindTooltip(`Zone de sécurité · ${nom || ''}`, { permanent: false });
+  if (cadrer) carte.fitBounds(coucheZoneEquipe.getBounds(), { padding: [30, 30] });
+}
+
+// ---- Feux actifs vus par satellite (NASA FIRMS, lu par le serveur toutes les 30 min) ----
+let coucheFeux = null, minuteurFeux = null;
+async function dessinerFeux() {
+  clearTimeout(minuteurFeux);
+  if (!etat.couches.feux || masquee('feux')) { if (coucheFeux) { coucheFeux.remove(); coucheFeux = null; } return; }
+  try {
+    const r = await api('/api/feux?heures=24');
+    if (!etat.couches.feux) return;
+    const g = L.layerGroup();
+    const t = Date.now();
+    for (const f of r.foyers || []) {
+      const age = (t - f.heure) / 3600000;
+      const couleur = age < 3 ? '#ff1f1f' : age < 12 ? '#ff8a00' : '#a0522d';
+      const rayon = Math.min(14, 5 + Math.sqrt(Math.max(0, f.frp || 0)));
+      const pop = `<b>🔥 Foyer ${f.geo ? 'Meteosat' : 'satellite'}</b> <small>(non confirmé)</small><br>${new Date(f.heure).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${ilYa(f.heure)}<br>${esc(f.source)} · confiance ${esc(f.confiance)}${f.frp ? ` · ${String(f.frp).replace('.', ',')} MW` : ''}${f.nuit ? ' · de nuit' : ''}<br>${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}${f.geo ? ' <small>(pixel d’environ 4 km : position approchée)</small>' : ''}${f.dfci ? `<br>DFCI <b>${esc(f.dfci)}</b>` : ''}<div class="vent-feu">💨 Vent…</div>`;
+      const m = f.geo
+        ? L.circle([f.lat, f.lon], { radius: 2000, color: couleur, weight: 2, dashArray: '5 4', fillColor: couleur, fillOpacity: 0.15, pane: 'traces' })
+        : L.circleMarker([f.lat, f.lon], { radius: rayon, color: '#000', weight: 1, fillColor: couleur, fillOpacity: f.confiance === 'faible' ? 0.35 : 0.85, pane: 'traces' });
+      m.bindPopup(pop).on('popupopen', (ev) => ventFoyer(f, ev.popup)).addTo(g);
+    }
+    g.addTo(carte);
+    if (coucheFeux) coucheFeux.remove();
+    coucheFeux = g;
+    if (!(r.foyers || []).length) annonce(`🔥 Aucun foyer satellite autour de la carte ces dernières 24 h${r.maj ? ` (lu ${ilYa(r.maj)})` : ''}`);
+  } catch (e) { annonce('⚠ Feux actifs indisponibles : ' + e.message, 'erreur'); }
+  minuteurFeux = setTimeout(dessinerFeux, 10 * 60000);
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-feu-voir]'); if (!el) return;
+  e.preventDefault();
+  const [lat, lon] = el.dataset.feuVoir.split(',').map(Number);
+  if (!etat.couches.feux) { etat.couches.feux = true; const b = document.querySelector('.bascule[data-couche="feux"]'); if (b) b.classList.add('actif'); dessinerFeux(); }
+  carte.setView([lat, lon], Math.max(carte.getZoom(), 12));
+});
+
+// Vent à 10 m au foyer (Open-Meteo, modèles Météo-France, gratuit et sans clé) : d'où il vient et où il pousse le feu
+const cacheVent = new Map();
+async function ventFoyer(f, popup) {
+  const el = popup.getElement() && popup.getElement().querySelector('.vent-feu');
+  if (!el) return;
+  const k = f.lat.toFixed(2) + ',' + f.lon.toFixed(2);
+  try {
+    let v = cacheVent.get(k);
+    if (!v || Date.now() - v.t > 15 * 60000) {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${f.lat.toFixed(3)}&longitude=${f.lon.toFixed(3)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&models=meteofrance_seamless`).then((x) => x.json());
+      if (!r.current) throw new Error(r.reason || 'pas de données');
+      v = { t: Date.now(), ...r.current }; cacheVent.set(k, v);
+    }
+    const de = v.wind_direction_10m, vers = (de + 180) % 360;
+    const pts = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], card = (a) => pts[Math.round(a / 45) % 8];
+    el.innerHTML = `💨 Vent ${Math.round(v.wind_speed_10m)} km/h${v.wind_gusts_10m ? `, rafales ${Math.round(v.wind_gusts_10m)}` : ''} · venant du <b>${card(de)}</b> <span class="fleche-vent" style="display:inline-block;transform:rotate(${vers}deg)" title="le feu est poussé vers le ${card(vers)}">⬆</span> pousse vers le <b>${card(vers)}</b>`;
+  } catch (e) { el.textContent = '💨 Vent indisponible'; }
+}
+
+// ---- Radar de pluie (RainViewer, gratuit, sans clé) : dernière image, mise à jour toutes les 10 min ----
+let coucheRadar = null, minuteurRadar = null;
+async function dessinerRadar() {
+  clearTimeout(minuteurRadar);
+  if (!etat.couches.radar) { if (coucheRadar) { coucheRadar.remove(); coucheRadar = null; } return; }
+  try {
+    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json').then((x) => x.json());
+    const f = (r.radar && r.radar.past || []).slice(-1)[0];
+    if (!f) throw new Error('pas d’image');
+    const url = `${r.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    const nouvelle = L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 7, maxZoom: 19, zIndex: 350, attribution: `Radar <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> ${new Date(f.time * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` });
+    if (!etat.couches.radar) return;
+    nouvelle.addTo(carte);
+    if (coucheRadar) coucheRadar.remove();
+    coucheRadar = nouvelle;
+  } catch (e) { annonce('⚠ Radar de pluie indisponible : ' + e.message, 'erreur'); }
+  minuteurRadar = setTimeout(dessinerRadar, 10 * 60000);
+}

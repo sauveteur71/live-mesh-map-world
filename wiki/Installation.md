@@ -55,6 +55,8 @@ Chaque visiteur peut ensuite changer de fond et de couches dans *Couches ▾*. S
 
 > ⚠️ Vérifiez l'orthographe de l'adresse du broker : `mqttexample.org` au lieu de `mqtt.example.org` donne une erreur `getaddrinfo ENOTFOUND` en boucle dans le journal.
 
+**Langue du journal** : `LANGUE=en` fait sortir le journal du serveur (`docker compose logs`) en anglais ; l'interface suit, elle, la langue de chaque navigateur. Les valeurs du `.env` s'écrivent en français ou en anglais (`oui`/`yes`, `non`/`no`, `CARTE_FOND=sombre` ou `dark`, `CARTE_RESEAUX=les-deux` ou `both`, `MESHCORE_PERIMETRE=voisins` ou `neighbours`).
+
 ## 3. L'assistant d'installation
 
 Ouvrez `http://IP_DU_SERVEUR:8095`. L'assistant crée le **compte administrateur** et règle le département, le broker et les canaux.
@@ -110,7 +112,7 @@ docker compose pull && docker compose up -d
 
 Les données (base, comptes, réglages, cache du relief) sont dans le volume `donnees` : sauvegardez-le.
 
-**Sauvegarde complète** (*Réglages › 📦 Sauvegarde complète*, administrateur) : un seul fichier `carte-live-complete-DATE.tar.gz` avec la base, les réglages, les comptes, les équipes et les signalements (le relief n'y est pas : il se retélécharge). Pour changer de serveur : installez la carte sur le nouveau, arrêtez-la (`docker compose stop carte-live`), décompressez le fichier dans son dossier de données (`tar -xzf carte-live-complete-DATE.tar.gz -C /chemin/du/volume`), puis relancez (`docker compose up -d`). Le fichier contient les comptes et les clés des canaux : gardez-le en lieu sûr. La carte sauvegarde aussi ses réglages chaque nuit (*Gestion › Sauvegardes*).
+**Sauvegarde complète** (*Réglages › 📦 Sauvegarde complète*, administrateur) : un seul fichier `carte-live-complete-DATE.tar.gz` avec la base, les réglages, les comptes, les équipes et les signalements (le relief n'y est pas : il se retélécharge). Pour changer de serveur : installez la carte sur le nouveau, puis, dès l'assistant d'installation, cliquez **♻️ Restaurer une sauvegarde complète…** et choisissez le fichier (sur une carte déjà installée : *Réglages › ♻️ Restaurer une sauvegarde complète*, administrateur). L'archive est vérifiée, la carte redémarre et reprend tout : base, réglages, comptes. L'état remplacé est gardé dans le dossier des données, sous `avant-restauration-DATE` (à supprimer à la main quand tout va bien). En ligne de commande, cela reste possible : arrêtez la carte (`docker compose stop carte-live`), décompressez le fichier dans son dossier de données (`tar -xzf carte-live-complete-DATE.tar.gz -C /chemin/du/volume`), puis relancez (`docker compose up -d`). Le fichier contient les comptes et les clés des canaux : gardez-le en lieu sûr. La carte sauvegarde aussi ses réglages chaque nuit (*Gestion › Sauvegardes*).
 
 Évitez de mettre à jour pendant une programmation à distance en cours : elle reprend après le redémarrage, mais la demande en cours repart de zéro.
 

@@ -14,6 +14,7 @@
 // Les commandes sont envoyées une par une : chaque commande attend sa réponse (ou une erreur) avant la suivante.
 
 const net = require('net');
+const { ecrireSur, lireJson } = require('../fichiers');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -71,8 +72,8 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
   const ecoute = options.ecoute || null;
   const fMemo = ecoute ? null : path.join(path.dirname(config.fichierBase), 'meshcore-companion.json');
   let memo = { cible: ecoute ? ecoute.cible || null : null, connus: [] };
-  if (fMemo) try { memo = { ...memo, ...JSON.parse(fs.readFileSync(fMemo, 'utf8')) }; } catch { /* premier lancement */ }
-  const sauver = () => { if (!fMemo) return; try { fs.writeFileSync(fMemo, JSON.stringify(memo, null, 1)); } catch (e) { journal('sauvegarde impossible :', e.message); } };
+  if (fMemo) try { memo = { ...memo, ...lireJson(fMemo) }; } catch { /* premier lancement */ }
+  const sauver = () => { if (!fMemo) return; try { ecrireSur(fMemo, JSON.stringify(memo, null, 1)); } catch (e) { journal('sauvegarde impossible :', e.message); } };
 
   let flux = null; // socket TCP, socket d'agent ou flux WebSocket du navigateur
   let tampon = Buffer.alloc(0);
@@ -417,6 +418,25 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
     if (!etat.pret) throw new Error('companion relié mais muet : il ne répond pas encore (firmware « companion », démarrage en cours ?)');
   };
   const cleOctets = (cle) => { if (!/^[0-9A-F]{64}$/i.test(cle)) throw new Error('clé publique invalide'); return Buffer.from(cle, 'hex'); };
+  // Requête anonyme à un répéteur entendu en direct (0x01 régions, 0x02 propriétaire, 0x03 horloge) : il n'y répond
+  // qu'en direct, donc on fixe d'abord le chemin du contact à « voisin direct » (0 saut). Renvoie la charge après le tag.
+  async function requeteAnonyme(noeud, type, delai) {
+    exigerPret();
+    const cle = cleOctets(noeud.cle);
+    const b = Buffer.alloc(1 + 32 + 3 + 64 + 32 + 4 + 8);
+    b[0] = CMD.ADD_UPDATE_CONTACT; cle.copy(b, 1);
+    b[33] = TYPES_ROLE[noeud.role] || 2; b[34] = 0; b[35] = 0; // chemin : 0 saut
+    b.write(String(noeud.nom || noeud.cle.slice(0, 8)).slice(0, 31), 100, 'utf8');
+    b.writeUInt32LE(noeud.horodatageAnnonce || 0, 132);
+    b.writeInt32LE(Math.round((noeud.lat || 0) * 1e6), 136); b.writeInt32LE(Math.round((noeud.lon || 0) * 1e6), 140);
+    await commande(b, [RESP.OK], 5000);
+    contacts.set(noeud.cle, { ...(contacts.get(noeud.cle) || {}), cle: noeud.cle, nom: noeud.nom, role: noeud.role, longueurChemin: 0 });
+    const r = await commande(Buffer.concat([Buffer.from([CMD2.ANON]), cle, Buffer.from([type, 0x00])]), [RESP.SENT], 6000)
+      .catch((e) => { if (e.code === 1) throw new Error('requête anonyme non gérée par ce firmware de companion'); throw e; });
+    const tag = r.readUInt32LE(2);
+    const t = await attendre((x) => x[0] === PUSH.BINAIRE && x.length >= 6 && x.readUInt32LE(2) === tag, delai);
+    return t.subarray(6);
+  }
 
   // Trame contact : clé(32) type drapeaux longueur_chemin chemin(64) nom(32) annonce(4) lat lon modif(4)
   // Longueur du chemin : 0xFF = inconnu (envoi en inondation) ; sinon 2 bits de taille d'identifiant (1 à 3 octets)
@@ -628,24 +648,16 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
     // Le répéteur n'y répond qu'en direct : on fixe le chemin du contact à « voisin direct » (0 saut) avant la demande.
     // Réponse : horloge du répéteur puis noms séparés par des virgules ; « * » = accepte aussi les messages sans région.
     async regionsDeclarees(noeud, delai = 20000) {
-      exigerPret();
-      const cle = cleOctets(noeud.cle);
-      const b = Buffer.alloc(1 + 32 + 3 + 64 + 32 + 4 + 8);
-      b[0] = CMD.ADD_UPDATE_CONTACT; cle.copy(b, 1);
-      b[33] = TYPES_ROLE[noeud.role] || 2; b[34] = 0; b[35] = 0; // chemin : 0 saut
-      b.write(String(noeud.nom || noeud.cle.slice(0, 8)).slice(0, 31), 100, 'utf8');
-      b.writeUInt32LE(noeud.horodatageAnnonce || 0, 132);
-      b.writeInt32LE(Math.round((noeud.lat || 0) * 1e6), 136); b.writeInt32LE(Math.round((noeud.lon || 0) * 1e6), 140);
-      await commande(b, [RESP.OK], 5000);
-      contacts.set(noeud.cle, { ...(contacts.get(noeud.cle) || {}), cle: noeud.cle, nom: noeud.nom, role: noeud.role, longueurChemin: 0 });
-      const r = await commande(Buffer.concat([Buffer.from([CMD2.ANON]), cle, Buffer.from([0x01, 0x00])]), [RESP.SENT], 6000)
-        .catch((e) => { if (e.code === 1) throw new Error('requête anonyme non gérée par ce firmware de companion'); throw e; });
-      const tag = r.readUInt32LE(2);
-      const t = await attendre((x) => x[0] === PUSH.BINAIRE && x.length >= 6 && x.readUInt32LE(2) === tag, delai);
-      const d = t.subarray(6);
+      const d = await requeteAnonyme(noeud, 0x01, delai);
       const horloge = d.length >= 4 ? d.readUInt32LE(0) : null;
       const noms = texte(d.subarray(4)).split(',').map((x) => x.trim()).filter(Boolean);
       return { joker: noms.includes('*'), regions: noms.filter((x) => x !== '*'), horlogeRepeteur: horloge };
+    },
+    // ---- Nom et infos du propriétaire d'un répéteur entendu en direct (requête anonyme 0x02, sans mot de passe) ----
+    async proprietaire(noeud, delai = 20000) {
+      const d = await requeteAnonyme(noeud, 0x02, delai);
+      const [nom, ...infos] = texte(d.subarray(4)).split('\n');
+      return { nom: (nom || '').trim() || null, infos: infos.join(' ').trim() || null, horlogeRepeteur: d.length >= 4 ? d.readUInt32LE(0) : null };
     },
     async decouvrirVoisins(dureeMs = 15000) {
       exigerPret();
@@ -674,6 +686,8 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
     async tracer(chemin, delai = 30000) {
       exigerPret();
       if (!chemin.length) throw new Error('chemin vide');
+      // Le protocole ne sait pas tracer des hachages de 3 octets : on les ramène à 2 (comme l'application MeshCore 1.50)
+      if (chemin[0].length === 6) chemin = chemin.map((h) => h.slice(0, 4));
       const taille = chemin[0].length / 2;
       const drapeaux = { 1: 0, 2: 1, 4: 2, 8: 3 }[taille];
       if (drapeaux == null || chemin.some((h) => h.length !== taille * 2)) throw new Error('chemin invalide');

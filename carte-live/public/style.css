@@ -1373,3 +1373,81 @@ b.canal-msg { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb,
 
 /* Captures d'écran dans l'aide */
 .capture-aide { display: block; max-width: 100%; height: auto; margin: 6px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); }
+
+/* Carroyage DFCI */
+.etiquette-dfci span { display: inline-block; padding: 0 4px; border-radius: 3px; background: rgba(10,14,20,.72); color: #ffb37a; font: 700 11px/14px ui-monospace, monospace; white-space: nowrap; }
+.etiquette-dfci.zone span { background: transparent; color: #ff9a55; font-size: 10px; }
+body.theme-clair .etiquette-dfci span { background: rgba(255,255,255,.85); color: #b0400a; }
+
+/* Alertes officielles */
+.chip-alertes { margin-left: 8px; padding: 3px 9px; border-radius: 12px; border: 1px solid #facc15; background: rgba(250,204,21,.15); color: #fde68a; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.chip-alertes.vig-orange { border-color: #fb923c; background: rgba(251,146,60,.2); color: #fed7aa; }
+.chip-alertes.vig-rouge { border-color: #f87171; background: rgba(248,113,113,.22); color: #fecaca; animation: puce-vient 1.2s ease-in-out 3; }
+.alertes-off h4 { margin: 10px 0 4px; font-size: 13px; color: var(--doux); text-transform: uppercase; letter-spacing: .5px; }
+.vig-ligne { padding: 6px 8px; margin: 4px 0; border-radius: 6px; border-left: 4px solid #facc15; background: rgba(250,204,21,.08); }
+.vig-ligne small { display: block; color: var(--doux); }
+.vig-ligne.vig-orange { border-left-color: #fb923c; background: rgba(251,146,60,.1); }
+.vig-ligne.vig-rouge { border-left-color: #f87171; background: rgba(248,113,113,.1); }
+.ao-reglages summary { cursor: pointer; margin-top: 8px; color: var(--accent); }
+body.theme-clair .chip-alertes { color: #713f12; }
+body.theme-clair .chip-alertes.vig-orange { color: #7c2d12; }
+body.theme-clair .chip-alertes.vig-rouge { color: #7f1d1d; }
+
+/* Statistiques d'un nœud */
+.stats-noeud h4 { margin: 12px 0 6px; font-size: 13px; }
+.chaleur { display: grid; grid-template-columns: 54px repeat(24, 1fr); gap: 2px; align-items: center; font-size: 10px; color: var(--doux); }
+.chaleur i { display: block; height: 14px; border-radius: 2px; background: var(--accent, #2dd4bf); }
+.chaleur .j { white-space: nowrap; overflow: hidden; }
+.chaleur .h { text-align: center; }
+.barre-stat { display: grid; grid-template-columns: minmax(90px, 40%) 1fr 42px; gap: 6px; align-items: center; font-size: 12px; margin: 3px 0; }
+.barre-stat span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barre-stat i { display: block; height: 10px; border-radius: 3px; min-width: 2px; }
+.barre-stat b { text-align: right; }
+.ao-deps { margin: 8px 0; } .ao-deps label.case { display: inline-flex; margin-right: 10px; }
+.parametres .ligne-entiere { grid-column: 1 / -1; display: block; }
+/* Assistant d'installation : reprise d'une sauvegarde complète */
+.encart-restauration { border: 1px solid rgba(120, 160, 190, .55); border-radius: 8px; padding: 10px 12px; margin: 8px 0 14px; font-size: 13px; line-height: 1.45; }
+.encart-restauration > div { margin-top: 8px; }
+
+/* Liste et alertes communes aux deux réseaux : pastille MT / MC, filtre de réseau */
+.tag-reseau { display: inline-block; min-width: 22px; margin-right: 5px; padding: 0 4px; border-radius: 4px; font: 700 10px/16px system-ui, sans-serif; text-align: center; vertical-align: 1px; color: #05090d; }
+.tag-reseau.mt { background: #67ea94; }
+.tag-reseau.mc { background: #ffb547; }
+.filtre-reseau { display: flex; gap: 4px; margin: 0 0 8px; }
+.filtre-reseau button { flex: 1; padding: 5px 8px; border: 1px solid var(--bord); border-radius: 6px; background: transparent; color: var(--texte); font-weight: 600; cursor: pointer; }
+.filtre-reseau button.actif { background: var(--accent, #3ee6c4); border-color: var(--accent, #3ee6c4); color: #05090d; }
+body.alertes-fusionnees .titre-mt-alertes { display: none; }
+
+/* Envoi d'une vigilance à la demande */
+.ao-envoi { margin: 6px 0 8px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.ao-envoi label { display: inline-flex; gap: 4px; align-items: center; }
+.ao-env-btn { float: right; margin-left: 6px; }
+
+/* Soutien au projet : bien visible sans gêner (bandeau et attribution) */
+.soutien { display: inline-block; margin-left: 8px; vertical-align: 1px; padding: 0 9px; border-radius: 99px; background: #ff4f8b; color: #fff; font-weight: 700; font-size: 11px; line-height: 18px; text-decoration: none; white-space: nowrap; }
+.soutien:hover { background: #ff2f75; color: #fff; }
+.leaflet-control-attribution a[href*="helloasso"] { color: #ff6fa3 !important; font-weight: 700; font-size: 12px; }
+body.theme-clair .leaflet-control-attribution a[href*="helloasso"] { color: #c0125a !important; }
+.soutien .s-court { display: none; }
+.marque .nom { white-space: nowrap; }
+@media (max-width: 900px) {
+  .marque .soutien { margin-left: 6px; padding: 0 7px; font-size: 10px; line-height: 15px; }
+  .marque .soutien .s-long { display: none; }
+  .marque .soutien .s-court { display: inline; }
+}
+
+/* Saisie des messages : @mention et messages rapides */
+.mentions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.mentions button { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--bord); background: var(--surface); color: var(--texte); cursor: pointer; }
+.msg-rapides { max-width: 170px; }
+.proprietaire-mc { display: block; color: var(--doux, inherit); white-space: normal; }
+.responsable-noeud { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0 10px; padding: 6px 10px; border: 1px solid var(--bord, #2a3b37); border-radius: 8px; }
+.auteur-msg { font: inherit; color: inherit; font-weight: 600; background: none; border: 0; border-bottom: 1px dotted currentColor; padding: 0; cursor: pointer; }
+.auteur-msg:hover, .auteur-msg:focus-visible { color: var(--accent); outline: none; }
+.menu-noeud { position: fixed; z-index: 3000; min-width: 190px; background: var(--surface-2); color: var(--texte); border: 1px solid var(--bord); border-radius: 8px; box-shadow: 0 6px 20px #0008; padding: 4px; display: grid; }
+.menu-noeud .titre { padding: 6px 8px; font-weight: 600; border-bottom: 1px solid var(--bord); margin-bottom: 2px; }
+.menu-noeud button { text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.menu-noeud button:hover, .menu-noeud button:focus-visible { background: var(--surface); outline: 2px solid var(--accent); outline-offset: -2px; }
+.bandeau-consultation { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1200; background: var(--surface-2); color: var(--texte); border: 1px solid var(--accent); border-radius: 99px; padding: 5px 14px; font-size: 13px; max-width: calc(100vw - 32px); text-align: center; box-shadow: 0 4px 14px #0007; }
+.bandeau-consultation a { color: var(--accent); }
+body.consultation #outil-connecter, body.consultation #outil-companion-mc, body.consultation [data-groupe="gerer"] { display: none !important; }

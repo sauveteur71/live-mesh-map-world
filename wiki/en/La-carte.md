@@ -17,7 +17,7 @@
 - **Meshtastic / MeshCore / Both** selector at the top of the panel. When switching network, the other network's traces are cleared.
 - **Legend and filters**: relays, clients, mute clients, trackers, unknown, inactive, MQTT gateways online, nodes in alert.
 - Area shown (menu at the top): the department, the department and its neighbours, a **French region** or the whole of France. The choice is kept between visits. You only see what the map receives: your MQTT broker's reach and, for MeshCore, the “Packets kept” setting (department, neighbours or national).
-- Click on a node: **detailed sheet** (info, telemetry, neighbours, “heard by”, frames, inferred configuration, range test).
+- Click on a node: **detailed sheet** (info, telemetry, neighbours, “heard by”, frames, inferred configuration, range test) and a **Statistics** tab: activity hour by hour over 1 to 30 days, packet types, SNR received directly, hop count to arrive, receivers that hear it most.
 
 ## Links
 - **Measured**: SNR received by gateways, neighbor info (NeighborInfo), traceroutes. Colour by SNR, adjustable period (*Links 24 h*).
@@ -40,6 +40,11 @@ In *Messages*, clicking a message's origin (📡 / 🌐) shows its **route**:
 - **History** over more than a year, **replay** of the last 24 hours, **weekly report** (*Tools*).
 - **Map health** (*Network*): processor, memory, disk, database, MQTT.
 
+## How to reach it and person in charge of a node
+Node card, **Neighbours** tab, **How to reach it** section: through which station of the map to reach it (linked module, listening modules, then MQTT gateways that heard it) and the state of the link: *direct, both ways proven*, *direct, return path not proven*, *N hops* or *out of range*. Hearing a node does not prove it hears us: the return path is proven when it lists us as a neighbour, a traceroute comes back or a link is measured the other way. An MQTT gateway only listens.
+
+Node card, **Information** tab: **👤 Person in charge**, the person responsible for the node (a map account or a free name, with a contact). Visible to signed-in members only, the contact to managers only; editable by whoever can manage the node. An administrator can at the same time give the account the right to configure this node (it joins their sector). The person in charge is also shown in each team's member list.
+
 ## Field mode and app
 *Tools › Field mode*: GPS surveys with radio measurement and photo, even without network. The map installs like an app (“Add to home screen”, HTTPS required).
 
@@ -49,7 +54,9 @@ In *Messages*, clicking a message's origin (📡 / 🌐) shows its **route**:
 
 A public page (no messages or exact positions of private individuals) can be shared: *Tools › Share*. It is for viewing the network, without being able to change anything.
 - Each visitor chooses the **area** shown: the map's department, with its neighbours, a region, any department or the whole of France. Nodes, links, figures and animations follow. By default, coverage computations (coverage, where to place relays, point coverage) stay on the map's department: elsewhere, the public map is a light network map. The administrator can open them to **all departments** (*Manage › Settings › Public map and terrain*): a department's terrain is then loaded at the first computation, or in advance with **Tools › 🗺️ Whole of France › ⬇ Download and install** (can be stopped at any time, ≈ 250 MB on disk). Preparation first installs the “France terrain” package published on GitHub (`relief-france` release, ≈ 110 MB), then completes department by department. **📦 Build the package** produces this file from a map that has prepared everything. Sources: IGN RGE ALTI terrain (Licence Ouverte Etalab), high points, access and sites © OpenStreetMap contributors (ODbL).
-- The title follows the chosen network and area. The link to the full map only appears to logged-in administrators.
+- The title follows the chosen network and area.
+- **🧭 Explore in detail** opens the full map **read-only**, on the same view: node cards (neighbours, “how to reach it”, history), all layers, links, coverage and area studies, profiles, official alerts and active fires. Nothing can be changed: no report, message, radio request (position, traceroute, “who hears me”), administration or module to link, even for a signed-in account. A banner says so, with a way back to the simple map. Direct link: `/?consultation`.
+- The link to the full map (administration) only appears to logged-in administrators.
 
 ## Favorites and “My nodes”
 In a node's sheet, Meshtastic or MeshCore (logged-in account):
@@ -68,6 +75,18 @@ The **Network** panel has a **My nodes** section: administered first (silent one
 
 ## Frozen GPS
 The map flags in the alerts a node that keeps sending its position while the GPS fix it announces is more than 30 min old: GPS without signal, unplugged antenna or broken module. A fixed-position relay that has never moved is not concerned.
+
+## Rain radar
+*Layers ▾ › Rain radar*: the latest radar image (RainViewer, free), updated every 10 minutes, over the map. Handy to follow a storm approaching relays or teams.
+
+## DFCI grid
+The French firefighters' DFCI grid (forests, rescue) is built into the map:
+- **Layers ▾ › DFCI grid**: the grid is shown according to zoom (100 km squares, 20 km squares, 2 km squares, then the 5 zones of 1 km when zoomed in), with each square's code.
+- **Coordinates**: wherever the map gives coordinates (right-click, node sheet, search), the point's **DFCI code** is shown with a *Copy* button (e.g. `HF20B2.1`).
+- **Search**: type a code (`HF20B2`, `HF20B2.1` or just `HF20`) in the search bar: the map centres on it and draws the square.
+- **Reports**: the message sent over LoRa and the log book also give the DFCI code.
+
+Reading the code: 2 letters (100 km square), 2 even digits (20 km square), a letter and a digit (2 km square), then `.1` to `.5` (zone: 1 north-west, 2 north-east, 3 south-east, 4 south-west, 5 centre). The computation follows the official grid (Lambert II étendu) and was checked against the grid published on data.gouv.fr.
 
 ## Right-click on a node
 A right-click (or long press on a phone) on a node, in a list or on the map, opens a menu:

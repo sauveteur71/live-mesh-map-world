@@ -36,3 +36,29 @@ Pas de connexion au moment de signaler (zone blanche, réseau coupé) : le signa
 
 ## Points de passage reçus
 Les points de passage captés par la carte (MQTT ou module), envoyés par un Bipper, GerMaCrise ou l'appli Meshtastic, deviennent aussi des signalements (📻 reçu par radio), avec leur auteur. Ceux sans durée restent affichés 24 h ; « Terminé » les retire seulement de la carte.
+
+## Alertes officielles
+Un bandeau en haut de la carte (🟡 / 🟠 / 🔴) signale les alertes en cours ; un clic ouvre le détail (*Outils › 🚩 Signalements*, bloc **🌦️ Alertes officielles**).
+- **Vigilance Météo-France** (orages, vent, pluie-inondation, crues, neige, canicule…) pour les **départements choisis** par l'administrateur (celui de la carte par défaut, ses voisins ou n'importe quel autre). Elle est lue toutes les 10 minutes dans le flux public MeteoAlarm (aucune clé à demander).
+- **Vigipirate** : le niveau (Vigilance, Sécurité renforcée – risque attentat, Urgence attentat) se règle à la main par un gestionnaire, car il n'existe pas de flux officiel lisible par un programme. Il peut être annoncé en LoRa.
+- **FR-Alert** : le message reçu sur un téléphone se recopie dans la carte pour être **relayé en LoRa** aux équipes qui n'ont pas de réseau mobile. FR-Alert n'a pas de flux public fiable.
+
+**Diffusion automatique** (administrateur, *Réglages de diffusion*) : **désactivée par défaut** ; une fois cochée, les nouvelles vigilances à partir du niveau choisi (orange par défaut) partent en message texte sur les canaux Meshtastic indiqués (par défaut `Alerte`) et, si on le choisit, sur un canal MeshCore, une seule fois par vigilance : `🟠 Vigilance orange orages · Haute-Loire · du jeu. 12 16:00 au ven. 13 06:00 (Météo-France)`.
+
+### Envoyer une vigilance à la demande
+Un gestionnaire peut envoyer tout de suite une vigilance en cours par radio, même sans diffusion automatique : dans *🌦️ Alertes officielles*, choisir le canal **MeshCore** (canaux du companion) et/ou les canaux **Meshtastic** (canaux du module), puis le bouton **📡 Envoyer** de la vigilance voulue. Le texte part tel qu'il est diffusé automatiquement, par exemple « 🟠 Vigilance orange vent violent · Haute-Loire · du jeu. 12 18:00 au ven. 13 23:00 (Météo-France) ».
+
+## Fonctions affichées
+L'administrateur peut masquer, pour tous les utilisateurs de la carte, les **signalements** (avec leur couche et « Signaler un événement ici »), **Vigipirate**, **FR-Alert**, la **main courante** les **alertes Bipper / GerMaCrise** et les **feux actifs** : *Réglages › 👁️ Fonctions affichées*. La vigilance Météo-France reste toujours affichée ; le bouton 🚩 Signalements devient alors 🌦️ Alertes météo. Valeur de départ possible dans le `.env` : `FONCTIONS_MASQUEES=signalements,vigipirate,fr-alert,main-courante,bipper` (ajoutez `feux` pour masquer aussi les feux actifs).
+
+## Feux actifs (satellite)
+La carte lit toutes les 30 min les foyers de feu détectés par les satellites **NASA FIRMS** (VIIRS et MODIS), sans clé ni inscription, sur la France métropolitaine et la Corse :
+- **Couches › Feux actifs** : les foyers des dernières 24 h, rouges s'ils ont moins de 3 h, orange moins de 12 h, bruns au-delà ; la taille suit la puissance du feu. Un clic donne l'heure, le satellite, la confiance, la puissance et le **carreau DFCI** ;
+- **alerte** dans l'onglet Réseau pour tout foyer des 12 dernières heures dans la zone de la carte (hors confiance faible), regroupé par carreau DFCI de 2 km ; un clic centre la carte dessus ;
+- **📡 Envoyer** (gestionnaire) dans les alertes officielles, rubrique *🔥 Feux actifs*, sur les mêmes canaux Meshtastic et MeshCore que la vigilance météo.
+
+**Meteosat** (facultatif) : le satellite géostationnaire voit l'Europe toutes les 15 min, donc un départ de feu bien plus tôt que FIRMS, mais avec un pixel d'environ 4 km. Ces foyers sont dessinés en **cercle pointillé de 2 km** (position approchée). Il faut un compte gratuit LSA SAF (EUMETSAT) : inscription sur https://mokey.lsasvcs.ipma.pt/auth/signup, puis `LSASAF_UTILISATEUR` et `LSASAF_MOT_DE_PASSE` dans le `.env`. Le *Diagnostic* indique si la lecture fonctionne.
+
+**Vent** : la fiche d'un foyer donne le vent à 10 m sur place (Open-Meteo, modèles Météo-France) : force, rafales, d'où il vient et **vers où il pousse le feu**.
+
+Un foyer satellite **n'est pas une alerte officielle** : il arrive avec 1 à 3 h de retard et peut être une fausse détection (brûlage agricole, torchère, toiture chaude). Masquable dans *Réglages › 👁️ Fonctions affichées*.

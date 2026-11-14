@@ -6,16 +6,19 @@ The map shows MeshCore **alone or overlaid** on Meshtastic: repeaters, room serv
 **MeshCore › Companion** tab (administrator). The companion acts as an **observer**: it passes every packet it hears to the map, with the SNR. To link it, see [[Connect a node|Connecter un module]]: Wi-Fi (port 5000), USB or Bluetooth. The companion only serves one client at a time.
 
 ### Companion tools
-- **📡 Who hears me directly?**: 0-hop call; every repeater that hears it answers. Table with the SNR at which **it hears you**, the one at which **you hear it**, and the distance. No password, automatic every 6 h.
+- **📡 Who hears me directly?**: 0-hop call; every repeater that hears it answers. Table with the SNR at which **it hears you**, the one at which **you hear it**, and the distance. No password, automatic every 6 h. Right after, the map asks each repeater heard for its regions and its **owner info** (👤 under its name, if the repeater has it set).
 - **📊 Noise and statistics**: noise floor, last SNR and RSSI, transmit and receive time, errors, with a **7-day noise curve**. Above −100 dBm, a nearby source hampers reception (cell tower, power supply…).
 - **🌡️ Telemetry**: battery and sensors.
 - **Default region**: the companion's flood sends are only relayed by repeaters accepting this region.
 - **Companion commands** (firmware 1.14+) and **companion Wi-Fi** (network, password, enabled).
+- **Companion over Wi-Fi** (firmware 1.18+): the BLE companion on ESP32-S3 boards (Heltec V3/V4, XIAO ESP32-S3…) can also join your Wi-Fi. Set the network in the MeshCore app (Settings → Wi-Fi), give it a fixed address in your router, then enter its IP in *Companion Wi-Fi* (port 5000).
+- **Administering another companion** (firmware 1.18+): in a companion's card, **Administration** tab, the console and “Read configuration” work without a password if its owner has granted the **remote command** permission to the map's contact (MeshCore app → contact → Permissions).
 
 ## Repeaters
 **MeshCore › Program** tab and a repeater's sheet:
 - login with the **admin password** (can be remembered);
-- read and change settings, status (battery, noise, transmit), neighbours, set the clock, advert, restart, console;
+- read and change settings, status (battery, noise, transmit), neighbours, set the clock, advert, restart, console (↑ ↓ arrows recall commands already sent; those containing a password are never kept);
+- on failure, the message gives the **repeater's name and the start of its key**;
 - **Trace**: round trip along the path with the **SNR of each hop**, no password; also done every night around 3 am for monitored repeaters;
 - **Telemetry** of repeaters and sensors;
 - **home region** and sending region read with the configuration;
@@ -104,3 +107,17 @@ A difference is flagged in orange:
 This is the tool to check a commissioning, for example with the “Répéteur de base (FR-43)” template.
 
 **🔀 ID collisions.** In a path, each relay is only noted by the start of its key: 1 byte by default. Two nearby repeaters starting the same way make the route ambiguous. The table lists these repeaters, with the distance between the closest ones, and the share of paths still on 1 byte. The fix: `set path.hash.mode 1` (2 bytes).
+
+**Hash size of each repeater.** Below the collisions, the map reads the hash size each repeater uses in its own adverts (14 days) and flags those that differ from the majority, with the command to run (`set path.hash.mode N`). A repeater one size behind breaks the others' paths. The gap is also raised in the MeshCore alerts.
+
+## MeshCore maintenance alerts
+In the **Network** tab, with the other MeshCore alerts, the map flags on its own (from the versions read by “Read configuration”, `ver` and `board` commands):
+- a **known advisory** on a node: problem firmware (1.17.0 on Heltec T096, which does not transmit correctly: move to 1.17.1) or hardware under a manufacturer advisory (Elecrow ThinkNode M9: SD card advisory);
+- a **room server still in repeat mode** (`repeat on`): this mode is deprecated since firmware 1.18; set `set repeat off` and use a dedicated repeater to relay;
+- a **new MeshCore release** (less than 3 weeks old) while repeaters or room servers in the zone are behind, with their names;
+- a **repeater whose hash size differs** from the rest of the network.
+
+## Power curves
+When a sensor sends a voltage and a current on the same channel, the map adds a **Power (computed V × I)** curve if the sensor gives no power, or if the power it gives differs by more than 10 % from the calculation.
+
+**Links deduced from paths and hash size.** The map reads each path with its real size (1, 2 or 3 bytes): a 2-byte path is resolved on 2 bytes. But the size is chosen by the packet's sender (its app or companion setting), so many packets still travel with 1 byte, where two repeaters can share the same prefix. By default, only links taken from paths with **2 bytes or more** are drawn; direct (0-hop), measured and traced links are unchanged. Setting: *MeshCore › Companion › Links deduced from paths*, or `MESHCORE_LIENS_OCTETS_MIN` (1, 2 or 3).

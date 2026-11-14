@@ -18,3 +18,6 @@ agent/live-mesh-agent*
 live-mesh-agent.json
 .DS_Store
 Thumbs.db
+
+# Résultats des tests de l’interface (captures, journal)
+carte-live/tests/resultats/

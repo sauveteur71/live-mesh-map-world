@@ -10,13 +10,13 @@
 - **« ? »** à droite des rubriques : l'aide de l'écran affiché s'ouvre dans la carte (pages de ce wiki). **Visite guidée** à la première visite, à revoir dans Réglages.
 - **Confort et accessibilité** : confirmations et messages dans l'interface (plus de fenêtres du navigateur), option **Grand texte**, thème clair, navigation au clavier (Tab, Entrée, Échap), étiquettes pour lecteurs d'écran, boutons plus grands sur écran tactile.
 
-![Vue d’ensemble](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/fr-carte.jpg)
+![Vue d’ensemble](https://raw.githubusercontent.com/sauveteur71/carte-live-meshtastic/main/docs/captures/fr-carte.jpg)
 
 ## Nœuds et réseaux
 - Sélecteur **Meshtastic / MeshCore / Les deux** en haut du panneau. En changeant de réseau, les traces de l'autre réseau sont effacées.
 - **Légende et filtres** : relais, clients, clients muets, traceurs, inconnus, inactifs, passerelles MQTT en ligne, nœuds en alerte.
 - Secteur affiché (menu en haut) : le département, le département et ses voisins, une **région de France** ou toute la France. Le choix est gardé d’une visite à l’autre. On ne voit que ce que la carte reçoit : la portée de votre broker MQTT et, pour MeshCore, le réglage « Paquets conservés » (département, voisins ou national).
-- Clic sur un nœud : **fiche détaillée** (informations, télémétrie, voisins, « entendu par », trames, configuration déduite, test de portée).
+- Clic sur un nœud : **fiche détaillée** (informations, télémétrie, voisins, « entendu par », trames, configuration déduite, test de portée) et onglet **Statistiques** : activité heure par heure sur 1 à 30 jours, types de paquets, SNR reçu en direct, nombre de sauts pour arriver, récepteurs qui l’entendent le plus.
 
 ## Liaisons
 - **Mesurées** : SNR reçu par les passerelles, voisinage (NeighborInfo), traceroutes. Couleur selon le SNR, période réglable (*Liens 24 h*).
@@ -39,16 +39,23 @@ Dans *Messages*, un clic sur l'origine d'un message (📡 / 🌐) affiche son **
 - **Historique** sur plus d'un an, **rejeu** des 24 dernières heures, **rapport hebdomadaire** (*Outils*).
 - **Santé de la carte** (*Réseau*) : processeur, mémoire, disque, base, MQTT.
 
+## Pour le joindre et responsable d'un nœud
+Fiche d'un nœud, onglet **Voisins**, rubrique **Pour le joindre** : par quelle station de la carte l'atteindre (module relié, modules en écoute, puis passerelles MQTT qui l'ont entendu) et dans quel état est la liaison : *direct, aller-retour prouvé*, *direct, sens retour non prouvé*, *N sauts* ou *hors de portée*. Entendre un nœud ne prouve pas qu'il nous entend : le retour est prouvé quand il nous liste dans son voisinage, qu'une traceroute revient ou qu'une liaison est mesurée dans l'autre sens. Une passerelle MQTT ne fait qu'écouter.
+
+Fiche d'un nœud, onglet **Informations** : **👤 Responsable**, la personne qui répond du nœud (un compte de la carte ou un nom libre, avec un contact). Visible des membres connectés seulement, le contact des gestionnaires seulement ; modifiable par qui peut gérer le nœud. Un administrateur peut en même temps donner au compte le droit de régler ce nœud (il entre dans son secteur). Le responsable s'affiche aussi dans la liste des membres de chaque équipe.
+
 ## Mode terrain et application
 *Outils › Mode terrain* : relevés GPS avec mesure radio et photo, même sans réseau. La carte s'installe comme une application (« Ajouter à l'écran d'accueil », HTTPS requis).
 
 ## Page publique
 
-![La carte publique](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/fr-publique.jpg)
+![La carte publique](https://raw.githubusercontent.com/sauveteur71/carte-live-meshtastic/main/docs/captures/fr-publique.jpg)
 
 Une page publique (sans messages ni position exacte des particuliers) peut être partagée : *Outils › Partager*. Elle sert à consulter le réseau, sans rien pouvoir modifier.
 - Chaque visiteur choisit le **secteur** affiché : département de la carte, avec ses voisins, une région, n'importe quel département ou la France entière. Nœuds, liaisons, chiffres et animations suivent. Par défaut, les calculs de couverture (couverture, où poser des relais, couverture d'un point) restent sur le département de la carte : ailleurs, la carte publique est une carte légère du réseau. L'administrateur peut les ouvrir à **tous les départements** (*Gestion › Réglages › Carte publique et relief*) : le relief d'un département est alors chargé au premier calcul, ou à l'avance avec **Outils › 🗺️ Toute la France › ⬇ Télécharger et installer** (arrêt possible à tout moment, ≈ 250 Mo sur le disque). La préparation installe d'abord le paquet « relief France » publié sur GitHub (version `relief-france`, ≈ 110 Mo), puis complète département par département. **📦 Fabriquer le paquet** produit ce fichier depuis une carte qui a tout préparé. Sources : relief IGN RGE ALTI (Licence Ouverte Etalab), points hauts, accès et sites © contributeurs OpenStreetMap (ODbL).
-- Le titre suit le réseau et le secteur choisis. Le lien vers la carte complète n'apparaît qu'aux administrateurs connectés.
+- Le titre suit le réseau et le secteur choisis.
+- **🧭 Explorer en détail** ouvre la carte complète **en consultation**, sur la même vue : fiches des nœuds (voisins, « pour le joindre », historique), toutes les couches, liaisons, études de couverture et de zone, profils, alertes officielles et feux actifs. Rien ne peut y être modifié : pas de signalement, de message, de demande radio (position, traceroute, « qui m'entend »), d'administration ni de module à relier, même pour un compte connecté. Un bandeau le rappelle, avec un retour vers la carte simple. Lien direct : `/?consultation`.
+- Le lien vers la carte complète (administration) n'apparaît qu'aux administrateurs connectés.
 
 ## Favoris et « Mes nœuds »
 Dans la fiche d'un nœud, Meshtastic ou MeshCore (compte connecté) :
@@ -68,6 +75,18 @@ Le panneau **Réseau** a une section **Mes nœuds** : administrés d'abord (les 
 ## GPS figé
 La carte signale dans les alertes un nœud qui continue d'envoyer sa position alors que la mesure GPS qu'il annonce date de plus de 30 min : GPS sans signal, antenne débranchée ou module en panne. Un relais à position fixe, qui n'a jamais bougé, n'est pas concerné.
 
+## Radar de pluie
+*Couches ▾ › Radar de pluie* : la dernière image radar (RainViewer, gratuit), mise à jour toutes les 10 minutes, par-dessus la carte. Utile pour suivre un orage qui approche des relais ou des équipes.
+
+## Carroyage DFCI
+Le carroyage DFCI des pompiers (forêts, secours) est intégré à la carte :
+- **Couches ▾ › Carroyage DFCI** : la grille s'affiche selon le zoom (carrés de 100 km, de 20 km, carreaux de 2 km, puis les 5 zones de 1 km au plus près), avec le code de chaque carré.
+- **Coordonnées** : partout où la carte donne des coordonnées (clic droit, fiche d'un nœud, recherche), le **code DFCI** du point s'affiche avec un bouton *Copier* (ex. `HF20B2.1`).
+- **Recherche** : tapez un code (`HF20B2`, `HF20B2.1` ou seulement `HF20`) dans la barre de recherche : la carte se centre dessus et trace le carré.
+- **Signalements** : le message envoyé en LoRa et la main courante donnent aussi le code DFCI.
+
+Le code se lit : 2 lettres (carré de 100 km), 2 chiffres pairs (carré de 20 km), une lettre et un chiffre (carreau de 2 km), puis `.1` à `.5` (zone : 1 nord-ouest, 2 nord-est, 3 sud-est, 4 sud-ouest, 5 centre). Le calcul suit la grille officielle (Lambert II étendu) et a été vérifié sur le carroyage publié sur data.gouv.fr.
+
 ## Clic droit sur un nœud
 Un clic droit (ou un appui long sur téléphone) sur un nœud, dans une liste ou sur la carte, ouvre un menu :
 - ouvrir la fiche, centrer la carte ;
@@ -86,7 +105,7 @@ La liste Meshtastic, comme celle de MeshCore, peut être rangée **par type** (�
 
 ## Sur téléphone et tablette
 
-![Sur téléphone](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/fr-telephone.jpg)
+![Sur téléphone](https://raw.githubusercontent.com/sauveteur71/carte-live-meshtastic/main/docs/captures/fr-telephone.jpg)
 
 - **Panneau en tiroir** (téléphone, tablette en hauteur) : poignée à tirer ou à toucher, trois hauteurs (onglets seuls, moitié, plein). En paysage, le panneau passe sur le côté.
 - **Fiche d'un nœud en tiroir** : toucher la poignée pour l'agrandir, la glisser vers le bas pour la fermer.
@@ -100,6 +119,6 @@ La liste Meshtastic, comme celle de MeshCore, peut être rangée **par type** (�
 
 ## Chercher un réglage
 
-![Recherche d’un réglage (Ctrl+K)](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/fr-recherche.jpg)
+![Recherche d’un réglage (Ctrl+K)](https://raw.githubusercontent.com/sauveteur71/carte-live-meshtastic/main/docs/captures/fr-recherche.jpg)
 
 Le bouton **⚙️🔎** en haut (ou **Ctrl+K**) ouvre une recherche dans les réglages et fonctions de la carte : tapez « MQTT », « mot de passe », « IATA », « équipes », « firmware »… puis Entrée. La carte ouvre le bon onglet ou la bonne fenêtre et met le réglage en évidence. Seuls les réglages permis par votre compte sont proposés.

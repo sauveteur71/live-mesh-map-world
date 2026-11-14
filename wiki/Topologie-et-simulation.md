@@ -2,7 +2,7 @@
 
 *Outils › 🕸️ Topologie et simulation* (Meshtastic) et *Topologie et simulation MeshCore*.
 
-![Graphe des liaisons et analyse](https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/main/docs/captures/fr-topologie.jpg)
+![Graphe des liaisons et analyse](https://raw.githubusercontent.com/sauveteur71/carte-live-meshtastic/main/docs/captures/fr-topologie.jpg)
 
 ## Analyse
 - Graphe des liaisons **mesurées** : disposition libre, en anneaux ou géographique ; relais seuls ou tous les nœuds.

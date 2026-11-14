@@ -103,6 +103,8 @@ function appliquerVueReseau() {
   mcMajKpis();
   mcMajAlertes();
   mcDessinerChaleur();
+  // Réglages : la liste dépend du réseau affiché
+  if (typeof rendreHubReglages === 'function' && document.querySelector('.hub-reglages')) { try { rendreHubReglages(); } catch { /* panneau absent */ } }
   // Traces de l'autre réseau : axes de trafic, liaisons allumées, parcours d'un message affiché
   if (typeof dessinerAxes === 'function') dessinerAxes();
   if (typeof anim !== 'undefined' && anim.coucheAllumes) anim.coucheAllumes.clearLayers();
@@ -122,6 +124,7 @@ function mcIcone(n) {
   });
 }
 function mcDessinerNoeuds() {
+  if (window.desencombrerEtiquettes) setTimeout(window.desencombrerEtiquettes, 0);
   if (!mc.couche) return;
   // Companions et nœuds proches regroupés aux faibles zooms (répéteurs et room servers toujours visibles)
   if (!mc.coucheGroupes) mc.coucheGroupes = L.layerGroup().addTo(mc.couche);
@@ -276,6 +279,10 @@ function mcLibObservateur(n, majuscule) {
   const d = n.detailsObservateur || {};
   const t = d.carte ? (d.ecoute ? 'observateur de la carte (écoute)' : 'observateur de la carte') : `observateur MQTT${d.iata ? ' · ' + d.iata : ''}`;
   return majuscule ? t[0].toUpperCase() + t.slice(1) : t;
+}
+// Ligne d'un nœud MeshCore dans la liste commune aux deux réseaux (onglet Nœuds)
+function mcLigneListe(n, point, meta, avecTag) {
+  return `<div class="ligne" data-mc="${n.cle}"><span class="point ${point}"></span><span class="titre">${avecTag ? '<span class="tag-reseau mc">MC</span>' : ''}<i class="role-mc ${n.role}" style="--mcc:${mcRole(n.role).hex}"></i>${estFavori(n.cle) ? '⭐ ' : ''}${estAdministre(n.cle) ? '🛠 ' : ''}${esc(n.nom || n.id || n.cle.slice(0, 8))}<small>${esc(mcRole(n.role).un)}${n.observateur ? ' · ' + mcLibObservateur(n) : ''}</small></span><span class="meta">${meta}</span></div>`;
 }
 function mcRendreNoeuds() {
   const z = $('#mc-contenu');
@@ -442,6 +449,8 @@ async function mcRendreMessages() {
   ta.value = ancienTexte;
   const compter = () => { const n = new TextEncoder().encode(ta.value).length; $('#mc-compteur').textContent = `${n}/140`; $('#mc-compteur').classList.toggle('trop', n > 140); };
   ta.oninput = compter; compter();
+  if (typeof ameliorerSaisie === 'function') ameliorerSaisie($('#mc-texte'), { cle: () => 'mc:' + (mc.destMessage || ''), apres: $('#mc-btn-position') && $('#mc-btn-position').parentElement,
+    noms: () => [...mc.noeuds.values()].filter((n) => n.role === 'companion' && n.nom).map((n) => n.nom) });
   ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#mc-envoi').requestSubmit(); } };
   $('#mc-dest').onchange = async (e) => {
     if (e.target.value === 'choisir') {
@@ -482,13 +491,30 @@ function mcTagRegion(r) {
   if (r === '?') return '<span class="tag-region inconnue" title="Région inconnue de la carte (ajoutez-la à MESHCORE_REGIONS dans le .env)">🏷 région ?</span>';
   return `<span class="tag-region" title="Région « ${esc(r)} » : relayé par les répéteurs qui ont ${esc(r)} dans leur arbre de régions">🏷 ${esc(r)}</span>`;
 }
+// Auteur d'un message MeshCore : bouton qui ouvre fiche, message direct, position. Sur un canal, seul le nom
+// est connu : on retrouve le nœud quand un seul porte ce nom.
+function mcBoutonAuteur(nom, cle) {
+  if (!cle && nom && nom !== '?') { const l = [...mc.noeuds.values()].filter((n) => n.nom === nom); if (l.length === 1) cle = l[0].cle; }
+  return `<button type="button" class="auteur-msg" data-mc-auteur="${esc(cle || '')}" data-mc-nom="${esc(nom || '')}" title="Fiche, message direct, position">${esc(nom || '?')}</button>`;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-mc-auteur]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const cle = b.dataset.mcAuteur, n = cle && mc.noeuds.get(cle);
+  if (!cle) { ouvrirMenu(b, `${esc(b.dataset.mcNom)}`, [['🔎 Chercher ce nom', () => { const c = document.querySelector('#recherche-lieu'); if (c) { c.value = b.dataset.mcNom; c.dispatchEvent(new Event('input')); c.focus(); } }]]); return; }
+  const items = [['📇 Fiche du nœud', () => mcOuvrirFiche(cle)]];
+  if (etat.admin) items.push(['✉️ Message direct', () => { mc.destMessage = 'direct:' + cle; mcRendreMessages().then(() => { const t = $('#mc-texte'); if (t) t.focus(); }); }]);
+  if (n && n.lat != null) items.push(['📍 Voir sur la carte', () => carte.setView([n.lat, n.lon], Math.max(carte.getZoom(), 13))]);
+  ouvrirMenu(b, `${esc(mcNom(cle))} <small>${esc(cle.slice(0, 8))}</small>`, items);
+});
+
 function mcLigneMessage(m) {
-  const qui = m.sens === 'envoye' ? `<b>${esc(m.nomDe || 'moi')}</b>${m.genre === 'direct' ? ` → ${esc(m.nomVers || mcNom(m.vers))}` : ''}` : `<b>${esc(m.nomDe || '?')}</b>${m.genre === 'direct' ? ' → moi' : ''}`;
+  const qui = m.sens === 'envoye' ? `<b>${esc(m.nomDe || 'moi')}</b>${m.genre === 'direct' ? ` → ${mcBoutonAuteur(m.nomVers || mcNom(m.vers), m.vers)}` : ''}` : `${mcBoutonAuteur(m.nomDe || '?', m.genre === 'direct' ? m.de : null)}${m.genre === 'direct' ? ' → moi' : ''}`;
   const lieu = m.genre === 'direct' ? 'Direct' : m.canal || '';
   const nouv = typeof msgNouveaux !== 'undefined' && msgNouveaux.has('mc' + (m.id != null ? m.id : m.heure + (m.nomDe || '')));
   return `<div class="paquet mc message-mc ${m.sens}${nouv ? ' nouveau' : ''}" ${m.genre === 'direct' && m.sens === 'recu' && m.de ? `data-mc-repondre="${m.de}"` : m.genre === 'canal' && m.indexCanal != null ? `data-mc-canal="${m.indexCanal}"` : ''}>
     <div class="entete"><span class="heure">${new Date(m.heure).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span><span class="tag canal-msg${m.genre === 'direct' ? ' direct' : ''}" ${m.genre !== 'direct' && typeof couleurCanal === 'function' ? `style="--coul:${couleurCanal(m.canal)}"` : ''}><i style="background:${m.genre === 'direct' ? MC_TYPES.message.hex : MC_TYPES.canal.hex}"></i>${esc(lieu)}</span>${nouv ? '<span class="etiquette-nouveau">nouveau</span>' : ''}${mcTagRegion(m.region)}${estRelaye(m.texte) ? '<span class="badge-passerelle" title="Relayé par une passerelle inter-réseaux">⇄ passerelle</span>' : ''}
-    ${m.sauts != null ? `<span>${m.sauts === 0 ? 'direct' : m.sauts + ' saut' + (m.sauts > 1 ? 's' : '')}</span>` : ''}${m.sens === 'envoye' ? `<span class="statut-msg ${m.statut || ''}">${STATUTS_MSG[m.statut] || ''}${m.relais > 1 ? ' ×' + m.relais : ''}</span>` : ''}</div>
+    ${m.sauts != null ? `<span>${m.sauts === 0 ? 'direct' : m.sauts + ' saut' + (m.sauts > 1 ? 's' : '')}${m.sauts > 0 && m.tailleHachage ? ` · ${m.tailleHachage} o` : ''}</span>` : ''}${m.sens === 'envoye' ? `<span class="statut-msg ${m.statut || ''}">${STATUTS_MSG[m.statut] || ''}${m.relais > 1 ? ' ×' + m.relais : ''}</span>` : ''}</div>
     <div class="corps">${qui} : <span translate="no">${texteMessageHtml(m.texte, m.sens === 'envoye' ? m.nomDe || 'moi' : m.nomDe, m.heure)}</span></div></div>`;
 }
 
@@ -531,7 +557,7 @@ async function mcRendreAnalyse() {
 
 // ---- Gestion : administration des répéteurs et room servers (admin) ---------------------------
 const mcGestion = { selection: new Set(), suivi: null, tache: null, info: null };
-const MC_LPP = { tension: 'Tension', temperature: 'Température', humidite: 'Humidité', pression: 'Pression', courant: 'Courant', pourcentage: 'Charge', luminosite: 'Luminosité', altitude: 'Altitude', puissance: 'Puissance', energie: 'Énergie', concentration: 'Concentration', gps: 'Position', analogique: 'Entrée analogique', entree: 'Entrée', sortie: 'Sortie', generique: 'Capteur', presence: 'Présence', interrupteur: 'Interrupteur' };
+const MC_LPP = { puissance_calculee: 'Puissance (calculée U × I)', tension: 'Tension', temperature: 'Température', humidite: 'Humidité', pression: 'Pression', courant: 'Courant', pourcentage: 'Charge', luminosite: 'Luminosité', altitude: 'Altitude', puissance: 'Puissance', energie: 'Énergie', concentration: 'Concentration', gps: 'Position', analogique: 'Entrée analogique', entree: 'Entrée', sortie: 'Sortie', generique: 'Capteur', presence: 'Présence', interrupteur: 'Interrupteur' };
 // Dernière opération lancée (par nœud, « * » pour le panneau Programmer) : son bouton est le bouton principal
 const mcDerniereAction = {};
 const mcActionActive = (cle, a) => ((mcDerniereAction[cle] || 'lire') === a ? 'class="principal"' : '');
@@ -627,6 +653,9 @@ async function mcFicheCollisions() {
       <div class="mesure"><span>Chemins à 1 octet</span><b>${c.partUnOctetPct == null ? '–' : fmt(c.partUnOctetPct, 0, ' %')}</b></div>
     </div>
     <p class="note">${c.total ? `Sur les paquets relayés des 2 derniers jours : ${c.parTaille[1]} chemins à 1 octet, ${c.parTaille[2]} à 2 octets, ${c.parTaille[3]} à 3 octets.` : ''} ${r.un.length ? 'Passer ces répéteurs en <span class="mono">path.hash.mode 1</span> (2 octets) lève l’ambiguïté, comme le modèle « Répéteur de base (FR-43) ».' : ''}</p>
+    ${r.hachages && r.hachages.total ? `<h3>Taille des hachages de chaque répéteur</h3>
+    <p class="note">Lue sur leurs propres annonces (14 jours) : ${[1, 2, 3].filter((t) => r.hachages.parRepeteur[t]).map((t) => `${r.hachages.parRepeteur[t]} en ${t} octet${t > 1 ? 's' : ''}`).join(', ')}. Tout le réseau devrait utiliser la même taille (réglage <span class="mono">path.hash.mode</span>).</p>
+    ${r.hachages.ecarts.length ? r.hachages.ecarts.map((x) => `<div class="proposition audit-rep attention"><div class="audit-ligne"><a href="#" data-mc-fiche-audit="${x.cle}">${esc(x.nom)}</a> <small>annonce en <b>${x.taille} octet${x.taille > 1 ? 's' : ''}</b> alors que la majorité est en ${r.hachages.majoritaire} : <span class="mono">set path.hash.mode ${r.hachages.majoritaire - 1}</span></small></div></div>`).join('') : '<div class="vide">Tous les répéteurs entendus utilisent la même taille. 👍</div>'}` : ''}
     <h3>Même premier octet (${r.un.filter((g) => !g.doublon).length} vraie${r.un.filter((g) => !g.doublon).length > 1 ? 's' : ''}${r.un.some((g) => g.doublon) ? ` · ${r.un.filter((g) => g.doublon).length} doublon(s)` : ''})</h3>
     ${r.un.map((g) => groupe(g, 1)).join('') || '<div class="vide">Aucune collision à 1 octet dans la zone. 👍</div>'}
     ${r.deux.length ? `<h3>Mêmes deux premiers octets (${r.deux.length})</h3>${r.deux.map((g) => groupe(g, 2)).join('')}` : ''}`;
@@ -882,6 +911,33 @@ async function mcAligner(t, cle, zone) {
 }
 
 // Panneau d'administration dans la fiche d'un répéteur / room server
+// Historique des commandes CLI (flèches ↑ ↓ et liste de suggestions), propre à ce navigateur.
+// Les commandes qui portent un mot de passe ne sont jamais gardées.
+const CLI_HISTO = 'gaulix_cli_historique';
+function cliHisto() { try { const l = JSON.parse(localStorage.getItem(CLI_HISTO) || '[]'); return Array.isArray(l) ? l : []; } catch { return []; } }
+function cliMemoriser(c) {
+  if (!c || /pass|pwd|mdp/i.test(c)) return;
+  try { localStorage.setItem(CLI_HISTO, JSON.stringify([c, ...cliHisto().filter((x) => x !== c)].slice(0, 30))); } catch { /* stockage indisponible */ }
+}
+function cliHistorique(inp) {
+  if (!inp || inp.dataset.histo) return;
+  inp.dataset.histo = '1';
+  const id = 'dl-cli-' + Math.random().toString(36).slice(2, 8);
+  const dl = document.createElement('datalist'); dl.id = id;
+  dl.innerHTML = cliHisto().map((c) => `<option value="${esc(c)}">`).join('');
+  inp.after(dl); inp.setAttribute('list', id);
+  inp.title = 'Flèches ↑ ↓ : commandes déjà envoyées';
+  let i = -1;
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { i = -1; return; }
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const l = cliHisto(); if (!l.length) return;
+    e.preventDefault();
+    i = e.key === 'ArrowUp' ? Math.min(i + 1, l.length - 1) : Math.max(i - 1, -1);
+    inp.value = i < 0 ? '' : l[i];
+  });
+}
+
 async function mcRendreAdminFiche(n, z) {
   let l;
   try { l = await api('/api/mc/admin/lecture/' + n.cle); } catch (e) { z.innerHTML = `<div class="vide">${esc(e.message)}</div>`; return; }
@@ -897,6 +953,7 @@ async function mcRendreAdminFiche(n, z) {
   };
   z.innerHTML = `
     <form id="mc-f-adm" class="form-edit">
+      ${n.role === 'companion' ? '<p class="note">Companion : l’administration à distance demande un firmware 1.18 ou plus récent, et que son propriétaire accorde la permission « commande à distance » au contact de la carte (application MeshCore → contact → Permissions). Le mot de passe est inutile. Seules la console et la lecture de configuration ont un sens ici.</p>' : ''}
       <div class="grille-edit">
         <label>Mot de passe admin <input name="mdp" type="password" autocomplete="off" placeholder="${l.memorise ? '🔑 mémorisé (laisser vide)' : 'mot de passe du nœud'}"></label>
         <label class="case"><input type="checkbox" name="memoriser" ${l.memorise ? 'checked' : ''}> Mémoriser sur le serveur</label>
@@ -953,7 +1010,7 @@ async function mcRendreAdminFiche(n, z) {
     }
     if (a === 'redemarrer' && !(await confirmer(`Redémarrer « ${n.nom} » à distance ?`))) return;
     if (a === 'annonce') return lancer('annonce', { inondation: (await confirmer('Annonce relayée par tout le réseau ?\nOK = tout le réseau · Annuler = voisins directs seulement')) });
-    if (a === 'cli') { const c = f.cli.value.trim(); if (c) lancer('cli', { commande: c }); return; }
+    if (a === 'cli') { const c = f.cli.value.trim(); if (c) { cliMemoriser(c); lancer('cli', { commande: c }); } return; }
     if (a === 'appliquer') {
       const valeurs = {};
       f.querySelectorAll('.reglages-mc [name]').forEach((x) => { if (x.value !== '' && x.value !== x.dataset.initial) valeurs[x.name] = x.value.trim(); });
@@ -963,6 +1020,7 @@ async function mcRendreAdminFiche(n, z) {
     }
     lancer(a);
   }));
+  cliHistorique(f.cli);
   f.cli.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); f.querySelector('[data-a="cli"]').click(); } };
   z.querySelectorAll('tr[data-mc]').forEach((tr) => (tr.onclick = () => mcOuvrirFiche(tr.dataset.mc)));
 }
@@ -982,7 +1040,7 @@ function mcHtmlOutils() {
     ${o.erreur ? `<p class="erreur">${esc(o.erreur)}</p>` : ''}
     ${d && d.liste ? `<div class="note">Découverte ${ilYa(d.heure)} : ${d.liste.length} nœud(s) entendu(s) en direct${d.liste.length ? '' : ' (aucun répéteur à portée directe, ou répéteurs masqués / firmware ancien)'}</div>
       ${d.liste.length ? `<table class="voisins petit"><thead><tr><th>Nœud</th><th class="num" title="SNR auquel le nœud entend le companion">Il m’entend</th><th class="num" title="SNR auquel le companion entend le nœud">Je l’entends</th><th class="num">km</th></tr></thead><tbody>
-        ${d.liste.map((x) => `<tr ${x.nom ? `data-mc="${x.cle}"` : ''}><td>${esc(x.nom || x.cle.slice(0, 8) + '…')}<small> ${esc({ repeteur: 'répéteur', salon: 'room server', capteur: 'capteur' }[x.role] || '')}</small></td><td class="num" style="color:${couleurSnr(x.snrAller)}">${fmt(x.snrAller, 1, ' dB')}</td><td class="num" style="color:${couleurSnr(x.snrRetour)}">${fmt(x.snrRetour, 1, ' dB')}</td><td class="num">${x.distanceKm != null ? fmt(x.distanceKm, 1) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}` : ''}
+        ${d.liste.map((x) => `<tr ${x.nom ? `data-mc="${x.cle}"` : ''}><td>${esc(x.nom || x.cle.slice(0, 8) + '…')}<small> ${esc({ repeteur: 'répéteur', salon: 'room server', capteur: 'capteur' }[x.role] || '')}</small>${x.proprietaire && x.proprietaire.infos ? `<small class="proprietaire-mc" title="Infos propriétaire déclarées par le répéteur">👤 ${esc(x.proprietaire.infos)}</small>` : ''}</td><td class="num" style="color:${couleurSnr(x.snrAller)}">${fmt(x.snrAller, 1, ' dB')}</td><td class="num" style="color:${couleurSnr(x.snrRetour)}">${fmt(x.snrRetour, 1, ' dB')}</td><td class="num">${x.distanceKm != null ? fmt(x.distanceKm, 1) : '–'}</td></tr>`).join('')}</tbody></table>` : ''}` : ''}
     ${st ? `<div class="grille">
         <div class="mesure"><span>Bruit de fond</span><b style="color:${st.bruitDbm > -100 ? 'var(--attention)' : 'inherit'}">${val(st.bruitDbm, 0, ' dBm')}</b></div>
         <div class="mesure"><span>Dernier SNR · RSSI</span><b>${val(st.dernierSnr, 1)} · ${val(st.dernierRssi, 0)}</b></div>
@@ -1029,6 +1087,7 @@ function mcBrancherOutils(z) {
   if (det) det.ontoggle = () => { o.ouvert = det.open; };
   const cliLocal = async (c) => {
     o.ouvert = true;
+    cliMemoriser(c);
     try { const r = await postJson('/api/mc/companion/cli', { commande: c }); o.cli = [...(o.cli || []), { c: /^set wifi\.pwd/i.test(c) ? 'set wifi.pwd ••••' : c, r: r.reponse }].slice(-12); o.erreur = null; } catch (e) { o.erreur = e.message; }
     redessiner();
   };
@@ -1037,7 +1096,10 @@ function mcBrancherOutils(z) {
     const a = b.dataset.mcOutil;
     o.erreur = null;
     try {
-      if (a === 'decouvrir') { o.enCours = 'decouvrir'; redessiner(); o.decouverte = await postJson('/api/mc/companion/decouvrir'); }
+      if (a === 'decouvrir') { o.enCours = 'decouvrir'; redessiner(); o.decouverte = await postJson('/api/mc/companion/decouvrir');
+        // Les infos propriétaire arrivent ensuite (un répéteur toutes les quelques secondes) : on relit la liste
+        for (const s of [30, 90]) setTimeout(async () => { try { const d = await api('/api/mc/companion/decouverte'); if (d && d.liste) { o.decouverte = d; redessiner(); } } catch { /* ignoré */ } }, s * 1000);
+      }
       else if (a === 'stats') o.stats = await api('/api/mc/companion/stats');
       else if (a === 'telemetrie') o.telemetrie = (await api('/api/mc/companion/telemetrie')).mesures;
       else if (a === 'zone-lire') { o.ouvert = true; o.zone = (await api('/api/mc/companion/zone')).zone; }
@@ -1047,7 +1109,7 @@ function mcBrancherOutils(z) {
     redessiner();
   }));
   z.querySelectorAll('[data-mc-cli]').forEach((b) => (b.onclick = () => cliLocal(b.dataset.mcCli)));
-  const ci = $('#mc-cli-local'); if (ci) ci.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); if (ci.value.trim()) cliLocal(ci.value.trim()); } };
+  const ci = $('#mc-cli-local'); cliHistorique(ci); if (ci) ci.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); if (ci.value.trim()) cliLocal(ci.value.trim()); } };
   const fz = $('#mc-f-zone');
   if (fz) fz.onsubmit = async (ev) => {
     ev.preventDefault();
@@ -1086,6 +1148,8 @@ function mcMajAlertes() {
     z.onclick = (e) => { const el = e.target.closest('[data-mc-alerte]'); if (el && el.dataset.mcAlerte) mcOuvrirFiche(el.dataset.mcAlerte); };
   }
   document.querySelectorAll('.mc-seul-bloc').forEach((b) => (b.hidden = !mcAffiche()));
+  { const pli = z.closest('details'); if (pli) pli.hidden = typeof deuxReseaux === 'function' && deuxReseaux(); }
+  if (typeof deuxReseaux === 'function' && deuxReseaux() && typeof rendreReseau === 'function') { try { rendreReseau(); } catch { /* panneau absent */ } }
   const a = ((mc.etat && mc.etat.alertes) || []).filter((x) => { const n = x.noeud && mc.noeuds.get(x.noeud); return !n || mcDansZone(n); });
   const p = $('#nb-alertes-mc');
   p.textContent = a.length;
@@ -1197,6 +1261,7 @@ function mcRendreCompanion() {
       <button type="submit" class="principal">Relier</button>
       <button type="button" id="mc-wifi-ecoute" title="En plus du companion principal, pour l'écoute seulement">👂 En écoute</button>
     </form>
+    <p class="note">Depuis le firmware 1.18, le companion BLE des cartes ESP32-S3 (Heltec V3/V4, XIAO ESP32-S3…) sait aussi se relier au Wi-Fi : renseignez le réseau et le mot de passe dans l’application MeshCore (Réglages → Wi-Fi), puis indiquez ici son adresse IP (port 5000 par défaut). Donnez-lui une adresse fixe dans votre box.</p>
     <h4>Par un agent (companion USB sur un autre PC)</h4>
     ${(e.agents || []).length ? `<div class="liste">${e.agents.map((a) => `<div class="ligne"><span class="point ${a.occupe ? 'actif' : 'recent'}"></span><span class="titre">${esc(a.nom)}<small>${esc(a.source)}</small></span><span class="meta"><button class="mini" data-mc-agent="${esc(a.hote)}">${c.cible && c.cible.hote === a.hote ? 'Choisi' : 'Utiliser'}</button>${!a.occupe && !(c.cible && c.cible.hote === a.hote) ? ` <button class="mini" data-mc-agent-ecoute="${esc(a.hote)}" title="En plus du companion principal, pour l'écoute">👂</button>` : ''}</span></div>`).join('')}</div>` : '<div class="vide">Aucun agent en ligne. L’agent se télécharge dans Réseau › Modules radio › Module par agent (choisissez le port COM du companion).</div>'}
     <h4>Republication MQTT</h4>
@@ -1207,6 +1272,7 @@ function mcRendreCompanion() {
         <label>Racine des sujets <input name="racine" value="${esc(e.reglages.racine)}"></label>
         <label class="case"><input type="checkbox" name="republier" ${e.reglages.republier ? 'checked' : ''}> Republier les paquets du companion</label>
         <label>Paquets conservés <select name="perimetre">${[['departement', 'captés dans le département'], ['voisins', 'captés dans le département et ses voisins'], ['national', 'tout le flux national (lourd)']].map(([v, t]) => `<option value="${v}" ${e.reglages.perimetre === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>${e.reglages.horsPerimetre ? `${e.reglages.horsPerimetre} paquets ignorés depuis le démarrage` : 'selon la position de l’observateur qui les capte'}</small></label>
+        <label>Liaisons déduites des chemins <select name="liensOctetsMin">${[[1, 'tous les chemins (1 octet compris)'], [2, 'chemins en 2 octets ou plus'], [3, 'chemins en 3 octets seulement']].map(([v, t]) => `<option value="${v}" ${Number(e.reglages.liensOctetsMin || 2) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>à 1 octet, deux répéteurs peuvent avoir le même préfixe : liaisons parfois fausses</small></label>
         <label>Codes de zone voisins <input name="iataVoisins" value="${esc(e.reglages.iataVoisins || '')}" placeholder="ex. CFE, LYS, EBU"><small>pour les observateurs sans position connue</small></label>
         <label style="grid-column:1/-1">Canaux à déchiffrer (un par ligne) <textarea name="canaux" rows="3">${esc(e.reglages.canaux)}</textarea><small>Public · #nom (canal « hashtag ») · nom=secret (32 caractères hexadécimaux)</small></label>
       </div>
@@ -1253,7 +1319,7 @@ function mcRendreCompanion() {
     ev.preventDefault();
     const f = ev.target;
     if (!(await confirmer('Enregistrer ces réglages MeshCore ? Le service redémarre (quelques secondes).'))) return;
-    try { await postJson('/api/mc/reglages', { iata: f.iata.value.trim(), racine: f.racine.value.trim(), republier: f.republier.checked, canaux: f.canaux.value, perimetre: f.perimetre.value, iataVoisins: f.iataVoisins.value }); attendreRedemarrage('Réglages MeshCore enregistrés'); } catch (err) { retour(err.message); }
+    try { await postJson('/api/mc/reglages', { iata: f.iata.value.trim(), racine: f.racine.value.trim(), republier: f.republier.checked, canaux: f.canaux.value, perimetre: f.perimetre.value, liensOctetsMin: Number(f.liensOctetsMin.value), iataVoisins: f.iataVoisins.value }); attendreRedemarrage('Réglages MeshCore enregistrés'); } catch (err) { retour(err.message); }
   };
 }
 
@@ -1399,7 +1465,7 @@ function mcHtmlChemin(c, n) {
     <div class="chemin-mc"><span class="saut obs">${esc(n.nom || n.id)}</span>${c.retour.map((x) => '<i>›</i>' + etape(x)).join('')}<i>›</i><span class="saut obs">${esc(moi)}</span> <small>retour</small></div></div>`;
 }
 // ---- Capteurs d'un nœud : relevé périodique, courbes, libellés personnalisés ----
-const MC_LIB_CAPTEUR = { tension: 'Tension', temperature: 'Température', humidite: 'Humidité', pression: 'Pression', courant: 'Courant', pourcentage: 'Charge', luminosite: 'Luminosité', puissance: 'Puissance', energie: 'Énergie', altitude: 'Altitude', distance: 'Distance', concentration: 'Concentration', frequence: 'Fréquence', analogique: 'Entrée analogique', generique: 'Valeur', entree: 'Entrée', sortie: 'Sortie', presence: 'Présence', interrupteur: 'Interrupteur', direction: 'Direction' };
+const MC_LIB_CAPTEUR = { puissance_calculee: 'Puissance (calculée U × I)', tension: 'Tension', temperature: 'Température', humidite: 'Humidité', pression: 'Pression', courant: 'Courant', pourcentage: 'Charge', luminosite: 'Luminosité', puissance: 'Puissance', energie: 'Énergie', altitude: 'Altitude', distance: 'Distance', concentration: 'Concentration', frequence: 'Fréquence', analogique: 'Entrée analogique', generique: 'Valeur', entree: 'Entrée', sortie: 'Sortie', presence: 'Présence', interrupteur: 'Interrupteur', direction: 'Direction' };
 const libelleCapteur = (r, mesure) => {
   if (r.libelles && r.libelles[mesure]) return r.libelles[mesure];
   const [type, canal] = mesure.split(':');
@@ -1561,7 +1627,7 @@ async function mcOuvrirFiche(cle, ongletInitial) {
       ${n.observateur ? `<span class="badge passerelle" title="${obs.carte ? 'Relié à cette carte : il lui transmet ce qu’il entend (indépendant de la republication MQTT)' : 'Publie ce qu’il entend sur le broker MQTT, où la carte le lit'}">${esc(mcLibObservateur(n, true))}</span>` : ''}
       <span class="badge reseau-mc">MeshCore</span>
     </div>
-    <nav class="onglets-fiche"><button data-of="infos" class="actif">Informations</button><button data-of="voisins">Voisins (${d.voisins.length})</button><button data-of="trames">Paquets</button>${etat.membre && ['repeteur', 'salon', 'capteur'].includes(n.role) ? '<button data-of="capteurs">Capteurs</button>' : ''}${gerable(n.cle) && ['repeteur', 'salon', 'capteur'].includes(n.role) ? '<button data-of="admin">Administration</button>' : ''}</nav>
+    <nav class="onglets-fiche"><button data-of="infos" class="actif">Informations</button><button data-of="voisins">Voisins (${d.voisins.length})</button><button data-of="trames">Paquets</button>${etat.membre && ['repeteur', 'salon', 'capteur'].includes(n.role) ? '<button data-of="capteurs">Capteurs</button>' : ''}${gerable(n.cle) && ['repeteur', 'salon', 'capteur', 'companion'].includes(n.role) ? '<button data-of="admin">Administration</button>' : ''}</nav>
     <div data-pf="infos">
       <div class="grille">${mesures.map(([l, v]) => `<div class="mesure"><span>${l}</span><b>${esc(v)}</b></div>`).join('')}</div>
       <div class="boutons">
@@ -1684,6 +1750,7 @@ async function mcChargerNoeuds(complet) {
   }
   mcDessinerNoeuds();
   if ($('#mc-liste') && mc.vue === 'noeuds') mcRendreNoeuds();
+  if (typeof deuxReseaux === 'function' && deuxReseaux()) { try { rendreNoeuds(); } catch { /* panneau absent */ } }
   mcMajKpis();
   mcMajAlertes();
 }
@@ -1811,7 +1878,7 @@ function demarrerMeshcore() {
   // Clic sur un message : répondre (message direct reçu) ou écrire sur son canal
   document.body.addEventListener('click', (e) => {
     const r = e.target.closest('[data-mc-repondre], [data-mc-canal]');
-    if (!r || !etat.admin) return;
+    if (!r || !etat.admin || e.target.closest('[data-mc-auteur]')) return;
     mc.destMessage = r.dataset.mcRepondre ? 'direct:' + r.dataset.mcRepondre : 'canal:' + r.dataset.mcCanal;
     mcRendreMessages().then(() => { const t = $('#mc-texte'); if (t) t.focus(); });
   });

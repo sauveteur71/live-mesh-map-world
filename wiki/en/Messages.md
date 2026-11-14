@@ -5,6 +5,11 @@
 - choose a **channel**, or **✉️ Direct message… (choose a node)**: search by name, short name or `!id`, recent nodes first;
 - **recent contacts** are offered directly in the list;
 - clicking a received message prepares the reply on the right channel (or directly to its author).
+- clicking the **author's name** (or the recipient's) opens a small menu: **📇 Node card**, **✉️ Direct message**, **📍 Show on the map**. On a MeshCore channel, where only the name is known, the map finds the node when only one has that name;
+- **⚡ Quick message**: ready-made texts (RAS, Bien reçu, En route, Sur place…) added in one click; “✏️ Edit the list…” to set your own (kept in this browser);
+- **@mention**: type `@` then the start of a name, pick from the list or complete with Tab;
+- **draft**: a started message is kept per channel, even after reloading the page;
+- in received messages, **coordinates** (“45.0431, 3.8853”) or a **DFCI square** are clickable and centre the map on them.
 
 ## Knowing whether the message got through
 Under each message sent from the map:
@@ -17,6 +22,8 @@ Under each message sent from the map:
 | ⚠ No ack received | nothing came back |
 
 Under **every** message: **📡 Heard by N receivers**, with for each one the gateway, direct or the hop count, the SNR and the last relay. A click opens the route on the map.
+
+Under a relayed MeshCore channel message, the hop count is followed by the path's **hash size** (“2 sauts · 2 o”, i.e. 2 bytes).
 
 **Limits**: a node without an MQTT gateway that receives your message leaves no trace. On private channels, only gateways with uplink to MQTT on that channel report it. A channel message has no read receipt: to check that a specific contact hears you, send them a **direct message**.
 

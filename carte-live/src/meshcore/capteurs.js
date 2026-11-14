@@ -5,6 +5,7 @@
 // - libellé personnalisable de chaque mesure (« Batterie », « Abri », au lieu de « tension 1 »).
 
 const fs = require('fs');
+const { ecrireSur, lireJson } = require('../fichiers');
 const path = require('path');
 
 const INTERVALLES = [0, 15, 30, 60, 180, 360, 720, 1440]; // minutes, 0 = jamais
@@ -25,8 +26,8 @@ function creerCapteursMc({ db, config, adminMc, companion, journal }) {
   };
   const fichier = path.join(path.dirname(config.fichierBase), 'meshcore-capteurs.json');
   let reglages = {}; // cle -> { intervalleMin, libelles: { 'temperature:2': 'Abri' }, seuils: { 'tension:1': { min: 3.4 } }, dernier, nom }
-  try { reglages = JSON.parse(fs.readFileSync(fichier, 'utf8')) || {}; } catch { /* aucun */ }
-  const sauver = () => { try { fs.writeFileSync(fichier, JSON.stringify(reglages)); } catch { /* lecture seule */ } };
+  try { reglages = lireJson(fichier) || {}; } catch { /* aucun */ }
+  const sauver = () => { try { ecrireSur(fichier, JSON.stringify(reglages)); } catch { /* lecture seule */ } };
 
   // Une mesure LPP = type + canal ; seules les valeurs numériques font une courbe (GPS, accéléromètre : ignorés)
   function noter(cle, mesures) {
@@ -49,6 +50,19 @@ function creerCapteursMc({ db, config, adminMc, companion, journal }) {
       if (!series.has(p.mesure)) series.set(p.mesure, { mesure: p.mesure, unite: p.unite, points: [] });
       series.get(p.mesure).points.push([p.heure, p.valeur]);
     }
+    // Puissance calculée (tension × courant, même canal, même relevé) quand le capteur ne la donne pas lui-même,
+    // ou quand sa valeur s'écarte nettement du calcul (comme le fait l'appli MeshCore)
+    for (const [k, t] of series) {
+      if (!k.startsWith('tension:')) continue;
+      const canal = k.split(':')[1], c = series.get('courant:' + canal);
+      if (!c) continue;
+      const parHeure = new Map(c.points.map(([h, v]) => [h, v]));
+      const points = t.points.filter(([h]) => parHeure.has(h)).map(([h, v]) => [h, Math.round(v * parHeure.get(h) * 1000) / 1000]);
+      if (!points.length) continue;
+      const donnee = series.get('puissance:' + canal);
+      const ecart = donnee && donnee.points.length && Math.abs(donnee.points[donnee.points.length - 1][1] - points[points.length - 1][1]) > Math.max(0.5, 0.1 * Math.abs(points[points.length - 1][1]));
+      if (!donnee || ecart) series.set('puissance_calculee:' + canal, { mesure: 'puissance_calculee:' + canal, unite: 'W', calculee: true, points });
+    }
     return { intervalleMin: r.intervalleMin || 0, libelles: r.libelles || {}, seuils: r.seuils || {}, masquees: r.masquees || [], dernier: r.dernier || null, intervalles: INTERVALLES, series: [...series.values()] };
   }
 
@@ -57,6 +71,7 @@ function creerCapteursMc({ db, config, adminMc, companion, journal }) {
     if (intervalleMin !== undefined) {
       const v = Number(intervalleMin);
       if (!INTERVALLES.includes(v)) throw new Error('intervalle invalide');
+      if (v > 0 && !(r.intervalleMin > 0)) r.debutAuto = Date.now(); // point de départ pour l'alerte de retard
       r.intervalleMin = v;
     }
     if (libelles && typeof libelles === 'object') {
@@ -151,6 +166,20 @@ function creerCapteursMc({ db, config, adminMc, companion, journal }) {
   const LIB = { tension: 'tension', temperature: 'température', humidite: 'humidité', pression: 'pression', courant: 'courant', pourcentage: 'charge', luminosite: 'luminosité' };
   function alertes(nomDe = () => null) {
     const l = [];
+    // Relevés automatiques en retard : rien de reçu depuis 3 intervalles (2 h au moins). Signale toutes les causes
+    // (companion déconnecté, mot de passe refusé, nœud hors de portée ou disparu) au lieu de les laisser au seul journal
+    const t = Date.now();
+    for (const [cle, r] of Object.entries(reglages)) {
+      if (!(r.intervalleMin > 0)) continue;
+      const attendu = Math.max(3 * r.intervalleMin, 120) * 60000;
+      const depuis = r.dernier || r.debutAuto || 0;
+      if (!depuis || t - depuis < attendu) continue;
+      const nom = nomDe(cle) || r.nom || cle.slice(0, 8);
+      const h = new Date(depuis).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      l.push({ cle: `mc-capteur-retard:${cle}`, noeud: cle, type: 'releve', niveau: 'attention', nom, depuis: depuis + attendu,
+        message: r.absent ? `${nom} : relevés automatiques suspendus, le nœud n’est plus sur la carte (purgé ?)`
+          : `${nom} : aucun relevé automatique reçu depuis le ${h} (prévu toutes les ${r.intervalleMin >= 60 ? r.intervalleMin / 60 + ' h' : r.intervalleMin + ' min'}) — companion, mot de passe ou portée ?` });
+    }
     for (const [cle, r] of Object.entries(reglages)) {
       if (!r.seuils || !Object.keys(r.seuils).length) continue;
       for (const d of q.derniers.all(cle)) {

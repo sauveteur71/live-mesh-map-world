@@ -15,7 +15,7 @@ function confirmer(texte, { ok = 'Confirmer', annuler = 'Annuler' } = {}) {
       d.setAttribute('aria-labelledby', 'confirmer-texte');
       document.body.appendChild(d);
     }
-    const danger = /supprim|effac|retir|désactiv|termin|forcer|interromp|remettre à zéro|nouvelle clé/i.test(texte);
+    const danger = /supprim|effac|retir|désactiv|termin|forcer|interromp|remettre à zéro|nouvelle clé|seront remplacés/i.test(texte);
     d.innerHTML = `<p id="confirmer-texte"></p><div class="actions-confirmer"><button type="button" data-r="0">${esc(annuler)}</button><button type="button" data-r="1" class="${danger ? 'danger' : 'principal'}">${esc(ok)}</button></div>`;
     d.querySelector('p').textContent = texte;
     const fin = (v) => { d.onclose = null; if (d.open) d.close(); resoudre(v); };
@@ -179,6 +179,10 @@ function tuilesAccueil() {
     { ic: '🚩', nom: 'Signaler', aide: 'Route inondée, arbre, accident…', go: () => (etat.membre ? choisirPointPuis('Touchez la carte à l’endroit à signaler.', (ll) => formSignalement(ll.lat, ll.lng)) : $('#btn-admin').click()) },
     { ic: '📡', nom: 'Étudier la couverture', aide: 'Où ça passe, où poser un relais', go: () => allerGroupe('couverture') },
   ];
+  // Signalements masqués par l'administrateur : la tuile mène à la vigilance météo
+  if (typeof masquee === 'function' && masquee('signalements')) t[2] = { ic: '🌦️', nom: 'Alertes météo', aide: 'Vigilance Météo-France en cours', go: () => ficheAlertesOff() };
+  // Consultation : pas d'écriture ni de signalement ; à la place, les alertes officielles en lecture
+  if (etat.consultation) { t.splice(1, 2, { ic: '🌦️', nom: 'Alertes officielles', aide: 'Vigilance météo, feux actifs', go: () => ficheAlertesOff() }); }
   if (etat.gestion) t.push({ ic: '🛠', nom: 'Gérer mes nœuds', aide: 'Programmer, équipes, positions', go: () => allerGroupe('gerer') });
   t.push({ ic: '⚙️', nom: etat.membre ? 'Régler la carte' : 'Se connecter, affichage', aide: etat.admin ? 'Tous les réglages au même endroit' : 'Compte, affichage, aide', go: () => allerGroupe('reglages') });
   return t;
@@ -229,16 +233,20 @@ function rendreHubReglages() {
     ['👥', 'Comptes des utilisateurs', 'Créer, valider, rôles, secteurs', () => ouvrirDlg('comptes')],
     ['🩺', 'Diagnostic', 'Pourquoi ça ne marche pas ? Vérifie MQTT, canaux, modules, MeshCore, passerelle', () => ficheDiagnostic()],
     ['💾', 'Sauvegardes des réglages', 'Sauvegarder ou restaurer les réglages et les comptes', () => ouvrirDlg('sauvegardes')],
+    ['👁️', 'Fonctions affichées', 'Masquer les signalements, Vigipirate, FR-Alert, la main courante ou les alertes Bipper / GerMaCrise (pour ne garder que la vigilance météo, par exemple)', () => dlgFonctionsMasquees()],
     ['📦', 'Sauvegarde complète', 'Tout télécharger en un fichier (base, réglages, comptes) pour changer de serveur', async () => { if (await confirmer('Télécharger la sauvegarde complète ? Le fichier contient les comptes et les clés des canaux : gardez-le en lieu sûr.', { ok: 'Télécharger' })) location.href = '/api/sauvegarde-complete'; }],
+    ['♻️', 'Restaurer une sauvegarde complète', 'Reprendre tout depuis le fichier .tar.gz d’un autre serveur (remplace la base, les réglages et les comptes)', () => choisirEtRestaurer()],
     ['📜', 'Journal du serveur', 'Ce que fait la carte, erreurs', () => ouvrirDlg('journal')],
     ['⬆️', 'Mise à jour de la carte', 'Version installée, nouvelle version, mise à jour en un clic', () => ficheMaj()],
     ['🇫🇷', 'Toute la France', 'Télécharger et installer le relief de tous les départements', () => ficheFrance()],
   ];
+  // Réglages propres à un réseau : seulement quand ce réseau est affiché (Meshtastic, MeshCore ou les deux)
+  const vue = etat.vueReseau || 'les-deux', voitMc = vue !== 'meshtastic', lesDeux = vue === 'les-deux';
   const modules = !etat.membre ? [] : [
-    ['🔌', 'Connecter un module', 'Bluetooth, USB ou adresse IP, Meshtastic ou MeshCore', () => { const b = $('#outil-connecter'); if (b) b.click(); }],
-    ...(etat.admin && etat.config.meshcore ? [['🟠', 'MeshCore', 'Module (companion), code de zone, canaux, périmètre', () => ouvrirMcVue('companion')]] : []),
-    ...(etat.admin && etat.config.passerelleDispo ? [['⇄', 'Passerelle Meshtastic ⇄ MeshCore', 'Activer, choisir les canaux reliés, filtres', () => ouvrirPasserelle()]] : []),
-    ...(etat.admin ? [['🔐', 'Équipes', 'Canal chiffré par équipe sur les nœuds des intervenants', () => ouvrirOutilProgrammer('voir-equipes')]] : []),
+    ['🔌', 'Connecter un module', vue === 'meshtastic' ? 'Bluetooth, USB ou adresse IP' : vue === 'meshcore' ? 'Companion MeshCore : Bluetooth, USB ou Wi-Fi' : 'Bluetooth, USB ou adresse IP, Meshtastic ou MeshCore', () => { const b = $('#outil-connecter'); if (b) b.click(); }],
+    ...(etat.admin && etat.config.meshcore && voitMc ? [['🟠', 'MeshCore', 'Module (companion), code de zone, canaux, périmètre', () => ouvrirMcVue('companion')]] : []),
+    ...(etat.admin && etat.config.passerelleDispo && lesDeux ? [['⇄', 'Passerelle Meshtastic ⇄ MeshCore', 'Activer, choisir les canaux reliés, filtres', () => ouvrirPasserelle()]] : []),
+    ...(etat.admin && vue !== 'meshcore' ? [['🔐', 'Équipes', 'Canal chiffré par équipe sur les nœuds des intervenants', () => ouvrirOutilProgrammer('voir-equipes')]] : []),
   ];
   z.innerHTML = `<div class="hub-reglages">
     <p class="note">Tous les réglages sont rangés ici. Vous cherchez autre chose ? <button type="button" class="mini" id="hub-chercher">🔎 Chercher</button></p>
@@ -251,7 +259,7 @@ function rendreHubReglages() {
       <label translate="no">🌐 Langue · Language <select id="hub-langue" aria-label="Langue · Language"><option value="fr" ${window.LANGUE !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${window.LANGUE === 'en' ? 'selected' : ''}>English</option></select></label>
       <div class="actions-prop"><button type="button" class="mini" id="hub-visite">🧭 Revoir la visite guidée</button><button type="button" class="mini" id="hub-aide">❓ Aide</button></div>
     </div>
-    ${bloc('Compte', compte)}${bloc('Modules et réseaux', modules)}${bloc('La carte (administrateur)', carteL)}
+    ${bloc('Compte', compte)}${bloc('Modules et réseaux', modules)}${etat.admin && etat.config.meshcore && !lesDeux ? `<p class="note">${vue === 'meshtastic' ? 'Réglages MeshCore et passerelle : choisissez « MeshCore » ou « Les deux » en haut du panneau.' : 'Réglages Meshtastic (équipes) et passerelle : choisissez « Meshtastic » ou « Les deux » en haut du panneau.'}</p>` : ''}${bloc('La carte (administrateur)', carteL)}
     <p class="note a-propos">Carte live Meshtastic / MeshCore v${esc((etat.config.version && etat.config.version.version) || '')} · créée par F4GLD · <a href="https://www.helloasso.com/associations/radioclub-du-velay/formulaires/2" target="_blank" rel="noopener">♥ Soutenir le projet</a> (Radio-club du Velay) · <a href="https://github.com/sauveteur71/live-mesh-map-world" target="_blank" rel="noopener">code source</a></p></div>`;
   z.querySelectorAll('[data-go]').forEach((b) => (b.onclick = () => { try { actions[b.dataset.go](); } catch (e) { annonce('⚠ ' + e.message, 'erreur'); } }));
   $('#hub-chercher').onclick = () => ouvrirRechercheReglages();
@@ -269,7 +277,7 @@ async function ficheDiagnostic() {
   const z = $('#fiche-contenu');
   z.innerHTML = '<div class="vide">Vérifications en cours…</div>';
   let r;
-  try { r = await api('/api/diagnostic'); } catch (x) { z.innerHTML = `<div class="vide">${esc(x.message)}</div>`; return; }
+  try { r = await api('/api/diagnostic?reseau=' + encodeURIComponent(etat.vueReseau || 'les-deux')); } catch (x) { z.innerHTML = `<div class="vide">${esc(x.message)}</div>`; return; }
   const ACTIONS = {
     mqtt: ['Régler le serveur MQTT', () => ouvrirDlg('reglages', '[name=mqttUrl]')], canaux: ['Régler les canaux', () => ouvrirDlg('reglages', '[name=canaux]')],
     module: ['Connecter un module', () => { const b = $('#outil-connecter'); if (b) b.click(); }], companion: ['Relier le module MeshCore', () => ouvrirMcVue('companion', '#mc-f-wifi')],
@@ -432,4 +440,29 @@ function demarrerErgonomie() {
     window.indexReglages = function () { const l = origine(); const tete = ergo.recents.map((n) => l.find((e) => e.t === n)).filter(Boolean); return [...tete, ...l.filter((e) => !tete.includes(e))]; };
   }
   setTimeout(() => visiteGuidee(false), 1800);
+}
+
+// Réglages › Fonctions affichées : l'administrateur masque des fonctions pour tous les utilisateurs de la carte
+function dlgFonctionsMasquees() {
+  const LISTE = [
+    ['signalements', '🚩 Signalements', 'événements signalés sur la carte (route inondée…), leur couche et « Signaler un événement ici »'],
+    ['vigipirate', '🛡️ Vigipirate', 'niveau affiché dans le bandeau et dans les alertes officielles'],
+    ['fr-alert', '📢 FR-Alert', 'relais manuel des alertes reçues sur les téléphones'],
+    ['main-courante', '📋 Main courante', 'page imprimable des signalements'],
+    ['bipper', '📟 Alertes Bipper / GerMaCrise', 'envoi d’alertes aux pagers'],
+    ['feux', '🔥 Feux actifs (satellite)', 'couche des foyers NASA FIRMS, alertes sur la zone et envoi radio'],
+  ];
+  let d = document.getElementById('dlg-fonctions');
+  if (!d) { d = document.createElement('dialog'); d.id = 'dlg-fonctions'; document.body.appendChild(d); }
+  const m = (etat.config && etat.config.fonctionsMasquees) || [];
+  d.innerHTML = `<button class="fermer" type="button" data-fermer title="Fermer">×</button><h3>👁️ Fonctions affichées</h3>
+    <p class="note">Décochez ce que les utilisateurs de cette carte ne doivent pas voir. La vigilance Météo-France reste toujours affichée. Valeur de départ possible dans le .env : <span class="mono">FONCTIONS_MASQUEES=signalements,vigipirate,fr-alert,main-courante,bipper</span>.</p>
+    <div class="parametres">${LISTE.map(([k, t, x]) => `<label class="case ligne-entiere"><input type="checkbox" data-f="${k}" ${m.includes(k) ? '' : 'checked'}> <b>${t}</b> <small>${esc(x)}</small></label>`).join('')}</div>
+    <div class="actions-prop"><button type="button" class="principal" data-ok>Enregistrer</button></div><p class="erreur" data-retour></p>`;
+  d.querySelector('[data-fermer]').onclick = () => d.close();
+  d.querySelector('[data-ok]').onclick = async () => {
+    const masquees = [...d.querySelectorAll('[data-f]')].filter((x) => !x.checked).map((x) => x.dataset.f);
+    try { const r = await postJson('/api/fonctions-masquees', { masquees }); etat.config.fonctionsMasquees = r.masquees; appliquerFonctionsMasquees(); d.close(); annonce('✔ Fonctions affichées enregistrées'); } catch (e) { d.querySelector('[data-retour]').textContent = e.message; }
+  };
+  d.showModal();
 }

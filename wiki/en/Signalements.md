@@ -36,3 +36,29 @@ No connection when reporting (dead zone, network down): the report is **kept on 
 
 ## Received waypoints
 Waypoints captured by the map (MQTT or node), sent by a Bipper, GerMaCrise or the Meshtastic app, also become reports (📻 received over radio), with their author. Those without a duration stay shown for 24 h; “Done” only removes them from the map.
+
+## Official alerts
+A banner at the top of the map (🟡 / 🟠 / 🔴) shows the alerts in progress; a click opens the details (*Tools › 🚩 Reports*, **🌦️ Official alerts** block).
+- **Météo-France warnings** (thunderstorms, wind, rain-flood, floods, snow, heatwave…) for the map's department, and its neighbours if wanted. They are read every 10 minutes from the public MeteoAlarm feed (no key needed).
+- **Vigipirate**: the level (Vigilance, Heightened security – attack risk, Terrorist attack emergency) is set by hand by a manager, as there is no machine-readable official feed. It can be announced over LoRa.
+- **FR-Alert**: the message received on a phone is copied into the map to be **relayed over LoRa** to teams without mobile network. FR-Alert has no reliable public feed.
+
+**Automatic broadcast** (administrator, *Broadcast settings*): new warnings from the chosen level (orange by default) go out as a text message on the given channels (`Alerte` by default), once per warning.
+
+### Sending a warning on demand
+A manager can send a current warning over the air right away, even without automatic broadcasting: in *🌦️ Official alerts*, pick the **MeshCore** channel (the companion's channels) and/or the **Meshtastic** channels (the node's channels), then the **📡 Send** button of the warning. The text is the same as the automatic broadcast, e.g. “🟠 Vigilance orange vent violent · Haute-Loire · du jeu. 12 18:00 au ven. 13 23:00 (Météo-France)”.
+
+## Displayed features
+The administrator can hide, for every user of the map, **reports** (with their layer and “Report an event here”), **Vigipirate**, **FR-Alert**, the **incident log** **Bipper / GerMaCrise alerts** and **active fires**: *Settings › 👁️ Displayed features*. Météo-France warnings always stay visible; the 🚩 Reports button then becomes 🌦️ Weather warnings. Starting value possible in the `.env`: `FONCTIONS_MASQUEES=signalements,vigipirate,fr-alert,main-courante,bipper` (add `feux` to hide active fires too).
+
+## Active fires (satellite)
+Every 30 min the map reads the fire hotspots detected by **NASA FIRMS** satellites (VIIRS and MODIS), with no key or sign-up, over mainland France and Corsica:
+- **Layers › Active fires**: hotspots from the last 24 h, red under 3 h, orange under 12 h, brown beyond; size follows fire power. A click gives the time, satellite, confidence, power and **DFCI square**;
+- **alert** in the Network tab for any hotspot from the last 12 hours in the map's zone (except low confidence), grouped by 2 km DFCI square; a click centres the map on it;
+- **📡 Send** (manager) in the official alerts, *🔥 Active fires* section, on the same Meshtastic and MeshCore channels as weather warnings.
+
+**Meteosat** (optional): the geostationary satellite sees Europe every 15 min, so a fire start much earlier than FIRMS, but with a pixel of about 4 km. These hotspots are drawn as a **2 km dashed circle** (approximate position). A free LSA SAF (EUMETSAT) account is needed: sign up at https://mokey.lsasvcs.ipma.pt/auth/signup, then `LSASAF_UTILISATEUR` and `LSASAF_MOT_DE_PASSE` in the `.env`. *Diagnostic* shows whether reading works.
+
+**Wind**: a hotspot's card gives the 10 m wind on site (Open-Meteo, Météo-France models): speed, gusts, where it comes from and **where it pushes the fire**.
+
+A satellite hotspot **is not an official alert**: it arrives 1 to 3 h late and can be a false detection (agricultural burning, flare, hot roof). Can be hidden in *Settings › 👁️ Displayed features*.
