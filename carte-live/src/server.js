@@ -163,7 +163,7 @@ const DEMO_LECTURE = [
   /^\/api\/admin-noeuds(\/(modeles|favoris|firmware|conformite-auto|v28|taches\/[\w-]+|lecture\/\d+(\/detail)?))?$/,
   /^\/api\/trafic\/controle$/, /^\/api\/noeuds-nouveaux$/, /^\/api\/installations$/, /^\/api\/responsables$/,
   /^\/api\/mc\/(admin(\/modeles|\/taches\/[\w-]+)?|maintenance|audit\/(regions|collisions)|noeuds\/[0-9A-Fa-f]{64}\/chemin|capteurs\/[0-9A-Fa-f]{64}|companion\/(stats|telemetrie|decouverte))$/,
-  /^\/api\/(sante-carte|reglages|diagnostic|alertes-officielles|passerelle|signalements|releves|ecoutes)$/,
+  /^\/api\/(sante-carte|reglages|diagnostic|alertes-officielles|passerelle|signalements|releves|ecoutes|fond-hors-ligne)$/,
   /^\/api\/maintenance\/[\w-]+$/, /^\/api\/envoi$/, /^\/api\/equipes$/, /^\/api\/firmware\/(info|modules)$/, /^\/api\/radio\/modules$/, /^\/rapport$/,
 ];
 const SECRET_DEMO = /(mot_?de_?passe|motdepasse|password|^pass$|psk|secret|jeton|token|e?mail|channel_?url|urlcanal|privee|private|admin_?keys?|clesadmin|^contact$|telephone|^(hote|ip|host|adresse|url|mqttUrl|urlMqtt|utilisateur|auteur|par)$)/i;
@@ -198,6 +198,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve('leaflet/package.json')), 'dist'), { maxAge: '7d' }));
+app.use('/vendor/protomaps-leaflet', express.static(path.join(path.dirname(require.resolve('protomaps-leaflet/package.json')), 'dist'), { maxAge: '7d' }));
 // Pages : jamais gardées en cache, et leurs feuilles de style et scripts portent le numéro de version
 // (après une mise à jour, le navigateur charge forcément les nouveaux fichiers, sans Ctrl+F5)
 const pagesVersionnees = new Map();
@@ -256,6 +257,7 @@ app.get('/api/config', (req, res) => {
     centre: [config.carte.centreLat, config.carte.centreLon],
     zoom: config.carte.zoom,
     tuiles: config.carte.tuiles,
+    fondHorsLigne: typeof fondsHorsLigne !== 'undefined' ? (fondsHorsLigne.etat().fond || null) : null,
     retentionJours: config.retentionJours,
     seuils: config.seuils,
     admin: estAdmin(req),
@@ -338,7 +340,7 @@ function obtenirAsymetrie() {
       return l && l.lora && l.lora.txPower > 0 ? l.lora.txPower : null;
     },
     seuilDemod: () => {
-      const pr = (sourceRadio && sourceRadio.etat().preset) || config.reseauPreset || 'LONG_FAST';
+      const pr = presetReseau() || config.reseauPreset || 'LONG_FAST';
       const sf = (require('./analyse').PRESETS[pr] || { sf: 11 }).sf;
       return -7.5 - 2.5 * (sf - 7);
     },
@@ -541,13 +543,29 @@ function Rdep(req, depForce) {
   if (precharge.instance && precharge.courant === dep) return precharge.instance;
   if (!reliefsEtude.has(dep)) {
     if (!estCodeMonde(dep) && !listeDepartements.some((d) => d.code === dep)) return relief;
-    if (reliefsEtude.size >= 2) { const [k, v] = reliefsEtude.entries().next().value; v.arreter(); reliefsEtude.delete(k); }
+    if (reliefsEtude.size >= 6) { const [k, v] = reliefsEtude.entries().next().value; v.arreter(); reliefsEtude.delete(k); }
     journal(`[Relief] étude de la zone ${dep} : chargement du relief ${estCodeMonde(dep) ? 'Copernicus' : 'IGN'} et des points hauts`);
     reliefsEtude.set(dep, creerRelief(config, journal, { ...fournisseursRelief, envDefaut: () => { const c = relief.calibration(); return c && c.perteEnvironnementDb != null ? c.perteEnvironnementDb : null; } }, { code: dep }));
   } else { const v = reliefsEtude.get(dep); reliefsEtude.delete(dep); reliefsEtude.set(dep, v); }
   return reliefsEtude.get(dep);
 }
 
+// Relief d'un département déjà préparé sur le disque : il s'ouvre en une à deux secondes. On attend qu'il soit prêt
+// plutôt que de répondre « en cours de chargement » (le navigateur ne réessayait que 20 s plus tard).
+async function reliefPret(RR, ms = 12000) {
+  const fin = Date.now() + ms;
+  // Relief prêt et, pour un département préparé, ses points hauts aussi (sinon « 0 point haut évalué »)
+  const fini = () => RR.pret() && (!RR.code || !reliefSurDisque(RR.code) || (RR.etat().sommets || 0) > 0);
+  while (!fini() && Date.now() < fin) {
+    const e = RR.etat ? RR.etat() : {};
+    if (e.mnt === 'erreur' || (RR.code && !reliefSurDisque(RR.code))) break; // téléchargement IGN : plusieurs minutes, inutile d'attendre ici
+    await new Promise((ok) => setTimeout(ok, 200));
+  }
+  return RR.pret();
+}
+const messageChargement = (RR) => (RR.code && reliefSurDisque(RR.code)
+  ? `Relief de la zone ${RR.code} : ouverture en cours, quelques secondes`
+  : `Relief de la zone ${RR.code || ''} en cours de chargement (${estCodeMonde(RR.code) ? 'Copernicus' : 'IGN'}) : réessayez dans quelques minutes`);
 app.get('/api/relief/france', (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
   const surDisque = listeDepartements.filter((d) => d.code === String(config.departement.code).toUpperCase() || reliefSurDisque(d.code)).length;
@@ -588,24 +606,26 @@ app.post('/api/relief/recalculer', (req, res) => {
   R(req).calculerClassement(optsRelief(req.body || {}));
   res.json({ ok: true });
 });
-app.get('/api/relief/couvrir', (req, res) => {
+app.get('/api/relief/couvrir', async (req, res) => {
   const lat = Number(req.query.lat), lon = Number(req.query.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ erreur: 'Point invalide' });
   const o = optsRelief(req.query);
   if (req.query.reseau === 'meshcore') { o.noeuds = repeteursMc(); o.preset = o.preset || 'MESHCORE_FR'; }
-  try { res.json(R(req, { lat, lon }).couvrirPoint({ lat, lon }, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
+  const RR = R(req, { lat, lon }); await reliefPret(RR);
+  try { res.json(RR.couvrirPoint({ lat, lon }, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
 });
 // Un seul site pour plusieurs points : ?pts=lat,lon;lat,lon;…
-app.get('/api/relief/couvrir-points', (req, res) => {
+app.get('/api/relief/couvrir-points', async (req, res) => {
   const cibles = String(req.query.pts || '').split(';').map((x) => x.split(',').map(Number)).filter((x) => x.length === 2 && x.every(Number.isFinite)).slice(0, 5).map(([lat, lon], i) => ({ lat, lon, nom: `Point ${i + 1}` }));
   if (cibles.length < 2) return res.status(400).json({ erreur: 'Indiquer au moins deux points' });
   const o = optsRelief(req.query);
   if (req.query.reseau === 'meshcore') { o.noeuds = repeteursMc(); o.preset = o.preset || 'MESHCORE_FR'; }
-  try { res.json(R(req, ...cibles).couvrirPoints(cibles, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
+  const RR = R(req, ...cibles); await reliefPret(RR);
+  try { res.json(RR.couvrirPoints(cibles, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
 });
 // Répéteurs MeshCore positionnés et entendus depuis 24 h (relais existants pour « Relier » et « Couvrir »)
 const repeteursMc = () => { const lim = Date.now() - 24 * 3600000; return reseauMc.q.noeuds.all().filter((n) => n.lat != null && ['repeteur', 'salon'].includes(n.role) && (n.dernier_vu || 0) >= lim).map((n) => ({ num: n.cle, nom: n.nom || n.cle.slice(0, 8), lat: n.lat, lon: n.lon })); };
-app.get('/api/relief/relier', (req, res) => {
+app.get('/api/relief/relier', async (req, res) => {
   const q = req.query, n = (v) => Number(v);
   const a = { lat: n(q.aLat), lon: n(q.aLon), nom: q.aNom ? String(q.aNom).slice(0, 60) : 'Départ' }, b = { lat: n(q.bLat), lon: n(q.bLon), nom: q.bNom ? String(q.bNom).slice(0, 60) : 'Arrivée' };
   if (![a.lat, a.lon, b.lat, b.lon].every(Number.isFinite)) return res.status(400).json({ erreur: 'Points invalides' });
@@ -613,7 +633,8 @@ app.get('/api/relief/relier', (req, res) => {
   if (q.hA) o.hauteurA = Math.min(Math.max(Number(q.hA) || 2, 0.5), 60);
   if (q.hB) o.hauteurB = Math.min(Math.max(Number(q.hB) || 2, 0.5), 60);
   if (q.reseau === 'meshcore') { o.noeuds = repeteursMc(); o.preset = o.preset || 'MESHCORE_FR'; }
-  try { res.json(R(req, a, b).relierPoints(a, b, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
+  const RR = R(req, a, b); await reliefPret(RR);
+  try { res.json(RR.relierPoints(a, b, o)); } catch (e) { res.status(503).json({ erreur: e.message }); }
 });
 const cacheCouverture = new Map();
 const calculsPublics = new Map();
@@ -623,12 +644,12 @@ function limiterCalcul(ip) {
   if (calculsPublics.size > 2000) calculsPublics.clear();
   return l.length > 20;
 }
-app.get('/api/relief/couverture', (req, res) => {
+app.get('/api/relief/couverture', async (req, res) => {
   const lat = Number(req.query.lat), lon = Number(req.query.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ erreur: 'Point invalide' });
   const RR = R(req, { lat, lon });
   if (!dansEmprise({ lat, lon }, RR.emprise())) return res.status(400).json({ erreur: estMembre(req) ? 'Point hors du relief disponible' : 'Point hors de la zone couverte par le modèle de relief (département et ses abords)' });
-  if (!RR.pret()) return res.status(503).json({ erreur: `Relief de la zone ${RR.code || ''} en cours de chargement : réessayez dans quelques minutes` });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const o = optsRelief(req.query);
   const cle = JSON.stringify([RR.code, lat.toFixed(4), lon.toFixed(4), o, (RR.calibration() || {}).date]);
   let r = cacheCouverture.get(cle);
@@ -644,12 +665,12 @@ app.get('/api/relief/couverture', (req, res) => {
   res.json({ image: `/api/relief/couverture/${r.id}.png`, emprise: RR.emprise(), departement: RR.etat().departement, surfaceKm2: r.surfaceKm2, surfaceZoneKm2: r.surfaceZoneKm2, pctZone: r.pctZone, sol: r.sol, env: r.env, rayonKm: r.rayonKm });
 });
 // Couverture cumulée : ?pts=lat,lon[,hauteur];lat,lon[,hauteur];… (2 à 10 sites)
-app.get('/api/relief/couverture-multi', (req, res) => {
+app.get('/api/relief/couverture-multi', async (req, res) => {
   const sites = String(req.query.pts || '').split(';').map((x) => x.split(',').map(Number)).filter((x) => x.length >= 2 && x.slice(0, 2).every(Number.isFinite)).slice(0, 10)
     .map(([lat, lon, h]) => ({ lat, lon, h: Number.isFinite(h) ? Math.min(Math.max(h, 0.5), 100) : undefined }));
   if (!sites.length) return res.status(400).json({ erreur: 'Aucun site' });
   const RR = R(req, ...sites);
-  if (!RR.pret()) return res.status(503).json({ erreur: 'Le modèle de terrain est en cours de chargement' });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const o = optsRelief(req.query);
   const cle = JSON.stringify(['multi', RR.code, sites, o, (RR.calibration() || {}).date]);
   let r = cacheCouverture.get(cle);
@@ -675,9 +696,9 @@ function couvertureReseauCachee(RR, o, reseauCle) {
   }
   return r;
 }
-app.get('/api/relief/couverture-reseau', (req, res) => {
+app.get('/api/relief/couverture-reseau', async (req, res) => {
   const RR = R(req);
-  if (!RR.pret()) return res.status(503).json({ erreur: 'Le modèle de terrain est en cours de chargement' });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const o = optsRelief(req.query);
   if (req.query.reseau === 'meshcore') { o.noeuds = repeteursMc(); o.preset = o.preset || 'MESHCORE_FR'; }
   if (req.query.hn) o.hn = Math.min(Math.max(Number(req.query.hn) || 6, 0.5), 60);
@@ -702,9 +723,9 @@ async function villesDepartement(code) {
 }
 // Déplacer des relais existants : calcul en arrière-plan (1 à 3 min), résultat gardé jusqu'au prochain classement
 const optimisations = new Map(); // clé -> { etat, progression, resultat, erreur }
-app.get('/api/relief/optimisation', (req, res) => {
+app.get('/api/relief/optimisation', async (req, res) => {
   const RR = R(req);
-  if (!RR.pret()) return res.status(503).json({ erreur: 'Le modèle de terrain est en cours de chargement' });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const rayon = Math.min(Math.max(Number(req.query.rayon) || 6, 2), 15);
   const acces = ['voiture', '4x4', 'pied'].includes(req.query.acces) ? req.query.acces : null;
   const cle = JSON.stringify([RR.code, rayon, acces, (RR.classement() || {}).date, Math.floor(Date.now() / 3600000)]);
@@ -725,7 +746,7 @@ app.get('/api/sites-routiers', async (req, res) => { res.set('Cache-Control', 'p
 const evaluationsRoutiers = new Map();
 app.get('/api/relief/sites-routiers', async (req, res) => {
   const RR = R(req);
-  if (!RR.pret()) return res.status(503).json({ erreur: 'Le modèle de terrain est en cours de chargement' });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const h = Math.min(Math.max(Number(req.query.h) || 6, 2), 30);
   const cle = JSON.stringify([RR.code, h, (RR.classement() || {}).date, Math.floor(Date.now() / 3600000)]);
   let o = evaluationsRoutiers.get(cle);
@@ -766,7 +787,7 @@ app.get('/api/relief/budget', async (req, res) => {
 // Simulation « et si… » : { retirer: [num…], ajouter: [{ lat, lon, h, nom }…] }
 app.post('/api/relief/simulation', async (req, res) => {
   const RR = R(req);
-  if (!RR.pret()) return res.status(503).json({ erreur: 'Le modèle de terrain est en cours de chargement' });
+  if (!(await reliefPret(RR))) return res.status(503).json({ erreur: messageChargement(RR) });
   const b = req.body || {};
   const o = optsRelief(req.query);
   if (req.query.reseau === 'meshcore') { o.noeuds = repeteursMc(); o.preset = o.preset || 'MESHCORE_FR'; }
@@ -1784,6 +1805,30 @@ app.get('/api/messages', (req, res) => {
   }));
 });
 
+// Notifications de l'application Android (service en arrière-plan, écran éteint) : ce qui mérite de réveiller le
+// téléphone depuis « depuis » (ms) — messages directs reçus (Meshtastic et MeshCore), alertes critiques nouvelles,
+// signalements nouveaux. Réservé aux membres connectés (session de l'application).
+app.get('/api/notifications', (req, res) => {
+  if (!estMembre(req) || req.demoLecture) return res.status(401).json({ erreur: 'Connexion requise' });
+  const depuis = Math.max(Number(req.query.depuis) || 0, Date.now() - 24 * 3600000);
+  // Langue du téléphone (?langue=en) : alertes et libellés traduits ; les messages reçus restent tels quels
+  const tr = String(req.query.langue || '').toLowerCase().startsWith('en') ? require('./traduction').traduire : (t) => t;
+  const l = [];
+  try {
+    const moi = sourceRadio ? sourceRadio.etat().noeudLocal : null;
+    if (moi != null) for (const m of stockage.q.messages.all(200)) {
+      if ((m.heure || 0) > depuis && m.vers === moi && m.de !== moi && m.texte) l.push({ id: 'mt-' + m.idPaquet, genre: 'direct', heure: m.heure, titre: `✉️ ${nomNoeudServeur(m.de)}`, texte: m.texte });
+    }
+  } catch { /* pas de module */ }
+  try {
+    for (const m of reseauMc.messages(200)) if ((m.heure || 0) > depuis && m.sens === 'recu' && m.genre === 'direct') l.push({ id: 'mc-' + m.id, genre: 'direct', heure: m.heure, titre: `✉️ ${m.nomDe || 'MeshCore'} (MeshCore)`, texte: m.texte });
+  } catch { /* MeshCore absent */ }
+  for (const a of dernieresAlertes) if (a.niveau === 'critique' && (a.depuis || 0) > depuis) l.push({ id: 'al-' + a.cle, genre: 'alerte', heure: a.depuis, titre: '⚠️ ' + tr('Alerte'), texte: tr(a.message) });
+  try { for (const x of signalements.lister()) if (x.actif && (x.cree || 0) > depuis) l.push({ id: 'sg-' + x.id, genre: 'signalement', heure: x.cree, titre: '📍 ' + tr('Signalement'), texte: [x.titre, x.details].filter(Boolean).join(' : ') }); } catch { /* pas prêt */ }
+  res.set('Cache-Control', 'no-store').json({ maintenant: Date.now(), notifications: l.sort((a, b) => a.heure - b.heure).slice(-20) });
+});
+function nomNoeudServeur(num) { try { const n = stockage.q.noeud.get(num >>> 0); return (n && (n.nom_long || n.nom_court)) || '!' + (num >>> 0).toString(16); } catch { return '!' + (num >>> 0).toString(16); } }
+
 // Blocage après 3 échecs (adresse et compte), voir blocages.js
 const blocages = require('./blocages').creerBlocages(config, journal);
 const heureBlocage = (t) => new Date(t).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
@@ -1933,6 +1978,39 @@ try {
     .map((f) => ({ code: f.properties.code, nom: f.properties.nom, bbox: emprise(f.geometry) })).sort((a, b) => a.code.localeCompare(b.code));
 } catch { /* liste indisponible */ }
 app.get('/api/departements', (req, res) => res.json(listeDepartements));
+
+// ---- Fond de carte hors ligne (PMTiles OpenStreetMap) et relief ombré calculé sur place ----------------------
+const fondsHorsLigne = require('./fonds').creerFonds({ config, departements: () => listeDepartements, journal });
+app.get('/api/fond-hors-ligne', (req, res) => res.set('Cache-Control', 'no-store').json(fondsHorsLigne.etat()));
+app.post('/api/fond-hors-ligne', (req, res) => {
+  if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
+  const b = req.body || {};
+  if (b.action === 'arreter') { fondsHorsLigne.arreter(); return res.json(fondsHorsLigne.etat()); }
+  if (b.action === 'supprimer') { fondsHorsLigne.supprimer(); return res.json(fondsHorsLigne.etat()); }
+  if (fondsHorsLigne.etat().enCours.actif) return res.status(409).json({ erreur: 'Téléchargement déjà en cours' });
+  fondsHorsLigne.telecharger({ zone: b.zone, maxzoom: b.maxzoom }, utilisateur(req).identifiant).catch(() => { /* erreur gardée dans l'état */ });
+  setTimeout(() => res.json(fondsHorsLigne.etat()), 300);
+});
+app.get('/fonds/fond.pmtiles', (req, res) => {
+  const f = fondsHorsLigne.fichier();
+  if (!f) return res.status(404).end();
+  res.sendFile(f, { acceptRanges: true, cacheControl: true, maxAge: '1d' });
+});
+const cacheOmbrage = new Map();
+app.get('/api/relief/ombrage/:z/:x/:y.png', (req, res) => {
+  const [z, x, y] = ['z', 'x', 'y'].map((k) => Number(req.params[k]));
+  if (![z, x, y].every(Number.isInteger) || z < 6 || z > 14) return res.status(204).end();
+  const cle = `${z}/${x}/${y}`;
+  let t = cacheOmbrage.get(cle);
+  if (t === undefined) {
+    try { t = relief.ombrageTuile(z, x, y); } catch { t = null; }
+    if (!relief.pret()) return res.status(204).end(); // relief pas encore chargé : ne pas mémoriser de tuile vide
+    cacheOmbrage.set(cle, t);
+    if (cacheOmbrage.size > 800) cacheOmbrage.delete(cacheOmbrage.keys().next().value);
+  }
+  if (!t) return res.status(204).end();
+  res.set('Content-Type', 'image/png').set('Cache-Control', 'public, max-age=86400').send(t);
+});
 
 function emprise(geom) {
   let s = 90, o = 180, n = -90, e = -180;
@@ -2118,6 +2196,7 @@ app.get('/api/mqtt', (req, res) => {
     url: masquerUrl(config.mqtt.url), utilisateur: config.mqtt.utilisateur, motDePasseDefini: !!config.mqtt.motDePasse,
     racine: config.mqtt.racine, sujetsSupplementaires: config.mqtt.sujetsSupplementaires.join(', '), sujets,
     connecte: !!(clientMqtt && clientMqtt.connected), depuis: statsMqtt.depuis, reconnexions: statsMqtt.reconnexions, derniereErreur: statsMqtt.derniereErreur,
+    brokersSupplementaires: (typeof brokersSup !== 'undefined' ? brokersSup : []).map((b) => b.etat), doublonsIgnores: compteur.doublons || 0,
     dernierMessage: statsMqtt.dernierMessage, parMinute: +(n10 / 10).toFixed(1), ...compteur,
     passerelles: [...statsMqtt.passerelles.entries()].sort((a, b) => b[1].derniere - a[1].derniere).slice(0, 40).map(([id, e]) => ({ id, nom: noeuds.get(id) || null, ...e })),
     canaux: [...statsMqtt.canaux.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([canal, messages]) => ({ canal, messages })),
@@ -2407,11 +2486,11 @@ app.post('/api/mc/companion/cli', async (req, res) => {
     res.json({ reponse: /^get wifi\.pwd/i.test(commande) ? '(masqué)' : r });
   } catch (e) { res.status(409).json({ erreur: e.message }); }
 });
-// Relevés automatiques : statistiques toutes les 15 min, découverte toutes les 6 h
+// Relevés automatiques : statistiques toutes les 15 min, découverte et régions des répéteurs une fois par jour
 setInterval(() => { if (config.meshcore.actif && companion.etat().pret) statsCompanionMc().catch(() => {}); }, 15 * 60000);
 let derniereDecouverteMc = 0;
 setInterval(() => {
-  if (!config.meshcore.actif || !companion.etat().pret || Date.now() - derniereDecouverteMc < 6 * 3600000) return;
+  if (!config.meshcore.actif || !companion.etat().pret || Date.now() - derniereDecouverteMc < 24 * 3600000) return;
   derniereDecouverteMc = Date.now();
   decouvrirMc().then(() => interrogerRegionsMc().catch(() => {})).catch((e) => journal('[MeshCore] découverte automatique :', e.message));
 }, 5 * 60000);
@@ -2434,7 +2513,8 @@ async function interrogerRegionsMc(cles) {
       auditMc.noterDeclarees(k, r);
       interrogationMc.resultats.push({ cle: k, nom: n.nom, ok: true, ...r });
       await new Promise((ok) => setTimeout(ok, 2000));
-      try {
+      // Propriétaire : redemandé au plus une fois par semaine (chaque demande est une requête anonyme sur le réseau)
+      if (!(proprietairesMc[k] && Date.now() - (proprietairesMc[k].heure || 0) < 7 * 86400000)) try {
         const pr = await companion.proprietaire({ cle: n.cle, nom: n.nom, role: n.role, lat: n.lat, lon: n.lon, horodatageAnnonce: n.horodatage_annonce });
         proprietairesMc[k] = { nom: pr.nom, infos: pr.infos, heure: Date.now() };
         ecrireSur(fProprietairesMc, JSON.stringify(proprietairesMc));
@@ -2771,7 +2851,30 @@ clientMqtt.on('connect', () => {
 clientMqtt.on('close', () => { statsMqtt.depuis = null; diffuser({ genre: 'mqtt', connecte: false }); });
 clientMqtt.on('reconnect', () => { statsMqtt.reconnexions++; });
 clientMqtt.on('error', (e) => { statsMqtt.derniereErreur = { message: e.message, heure: Date.now() }; journal('Erreur MQTT :', e.message); });
-clientMqtt.on('message', (topic, message) => {
+// Le même paquet peut arriver par deux brokers (ponts entre bulles) : ignoré s'il a déjà été vu dans les 2 minutes
+const vusMqtt = new Map();
+function dejaVuMqtt(topic, message) {
+  const k = topic + '|' + crypto.createHash('sha1').update(message).digest('base64').slice(0, 16);
+  const t = Date.now(), v = vusMqtt.get(k);
+  if (v && t - v < 120000) return true;
+  vusMqtt.set(k, t);
+  if (vusMqtt.size > 20000) { for (const [x, h] of vusMqtt) { if (t - h > 120000) vusMqtt.delete(x); } if (vusMqtt.size > 20000) vusMqtt.clear(); }
+  return false;
+}
+clientMqtt.on('message', (topic, message) => traiterMessageMqtt(topic, message));
+// Brokers supplémentaires (MQTT_BROKERS_SUPPLEMENTAIRES) : mêmes traitements que le broker principal
+const brokersSup = config.mqtt.brokers.map((b) => {
+  const etatB = { url: b.url.replace(/\/\/[^@]*@/, '//'), racine: b.racine || config.mqtt.racine, connecte: false, depuis: null, messages: 0, derniereErreur: null };
+  const c = mqtt.connect(b.url, { clientId: 'carte-live-' + crypto.randomBytes(3).toString('hex'), reconnectPeriod: 10000, rejectUnauthorized: !config.mqtt.tlsNonVerifie });
+  const sujetsB = [etatB.racine + '/#', ...(config.meshcore.actif ? [config.meshcore.racine + '/#'] : [])];
+  c.on('connect', () => { Object.assign(etatB, { connecte: true, depuis: Date.now() }); journal(`MQTT supplémentaire connecté à ${etatB.url}, abonnement à ${sujetsB.join(', ')}`); c.subscribe(sujetsB, { qos: 0 }); });
+  c.on('close', () => { etatB.connecte = false; etatB.depuis = null; });
+  c.on('error', (e) => { etatB.derniereErreur = { message: e.message, heure: Date.now() }; });
+  c.on('message', (topic, message) => { etatB.messages++; traiterMessageMqtt(topic, message); });
+  return { client: c, etat: etatB };
+});
+function traiterMessageMqtt(topic, message) {
+  if ((brokersSup.length || config.mqtt.dedoublonner) && dejaVuMqtt(topic, message)) { compteur.doublons = (compteur.doublons || 0) + 1; return; }
   compteur.recus++;
   if (config.meshcore.actif && topic.startsWith(prefixeMc)) { compteurMc.recusMqtt = (compteurMc.recusMqtt || 0) + 1; try { messageMc(topic, message); } catch (e) { compteurMc.erreurs++; journal('Erreur MeshCore :', e.message, topic); } return; }
   noterMessageMqtt(topic);
@@ -2789,7 +2892,7 @@ clientMqtt.on('message', (topic, message) => {
     compteur.erreurs++;
     journal('Erreur de traitement :', e.message, topic);
   }
-});
+}
 
 // ---- Tâches périodiques ---------------------------------------------------
 let dernieresAlertes = [];
@@ -3083,12 +3186,35 @@ function tachesEnCours() {
   try { n += adminMc.taches().filter((t) => !t.fin && t.type !== 'telemetrie').length; } catch { /* aucune */ }
   return n;
 }
+// Détail des programmations en cours, pour décider de forcer ou non la mise à jour : quoi, sur quels nœuds,
+// où elle en est, et si elle reprendra d'elle-même après le redémarrage de la carte
+function tachesDetail() {
+  const l = [];
+  const nomMt = (num) => { const n = stockage.q.noeud ? stockage.q.noeud.get(num) : null; return (n && (n.nom_long || n.nom_court)) || '!' + (num >>> 0).toString(16); };
+  try {
+    for (const t of administration.taches().filter((x) => !x.fin)) {
+      const faits = t.noeuds.filter((n) => ['ok', 'echec', 'annule'].includes(n.statut)).length, cours = t.noeuds.find((n) => n.statut === 'en_cours');
+      l.push({ reseau: 'Meshtastic', nom: t.nom || t.type, auteur: t.auteur, debut: t.debut, avancement: `${faits}/${t.noeuds.length} nœud(s)`,
+        courant: cours ? `${nomMt(cours.num)}${cours.detail ? ' : ' + cours.detail : ''}` : (t.noeuds.find((n) => n.statut === 'en_attente') ? 'en attente du prochain nœud' : null),
+        reprise: t.type === 'firmware' ? 'non : une mise à jour de firmware interrompue est à relancer' : Date.now() - t.debut < 6 * 3600000 ? 'oui, reprend toute seule après le redémarrage' : 'non (trop ancienne)' });
+    }
+  } catch { /* aucune */ }
+  try {
+    for (const t of adminMc.taches().filter((x) => !x.fin && x.type !== 'telemetrie')) {
+      const total = (t.cles || []).length, faits = Object.keys(t.resultats || {}).length;
+      l.push({ reseau: 'MeshCore', nom: t.type, auteur: t.auteur, debut: t.debut || t.creee, avancement: `${faits}/${total} relais`,
+        courant: t.courant ? ((t.noms || {})[t.courant] || String(t.courant).slice(0, 8)) : t.prochainEssai ? 'en attente d’un nouvel essai' : t.statut,
+        reprise: t.type === 'motdepasse' ? 'non : un changement de mot de passe interrompu est à relancer' : 'oui, reprend toute seule après le redémarrage' });
+    }
+  } catch { /* aucune */ }
+  return l;
+}
 app.get('/api/maj', async (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
   // Fenêtre « Mise à jour » ouverte : on redemande la dernière version à GitHub (au plus une fois par minute)
   if (Date.now() - (majDispo.verifie || 0) > 60000) await verifierDerniereVersion();
   const v = infosVersion();
-  try { res.json({ ...v, installe: true, service: await appelMaj('GET', '/etat'), taches: tachesEnCours() }); } catch (e) { res.json({ ...v, installe: false, raison: e.message, taches: tachesEnCours() }); }
+  try { res.json({ ...v, installe: true, service: await appelMaj('GET', '/etat'), taches: tachesEnCours(), tachesDetail: tachesDetail() }); } catch (e) { res.json({ ...v, installe: false, raison: e.message, taches: tachesEnCours(), tachesDetail: tachesDetail() }); }
 });
 app.post('/api/maj', async (req, res) => {
   const u = utilisateur(req);
@@ -3474,10 +3600,23 @@ app.post('/api/suivis', (req, res) => {
   try { res.json(suivis.regler(u, b.id, b.liste, !!b.valeur)); } catch (e) { res.status(400).json({ erreur: e.message }); }
 });
 administration.utiliserAgents(agents);
-const analyse = creerAnalyse(stockage, config, reseau, () => (sourceRadio ? sourceRadio.etat().preset : null));
+const analyse = creerAnalyse(stockage, config, reseau, () => presetReseau());
 const liensMesuresNoeuds = () => fournisseursRelief.liensNoeuds(); // + mesures des nœuds mobiles (couverture mesurée)
+// Preset LoRa du réseau : celui du module connecté, sinon le plus fréquent parmi les nœuds entendus depuis 7 jours
+// (rapports de carte), sinon RESEAU_PRESET. Recalculé toutes les 10 minutes.
+var presetReseauCache = { t: 0, v: null };
+function presetReseau() {
+  const radio = sourceRadio ? sourceRadio.etat().preset : null;
+  if (radio) return radio;
+  if (Date.now() - presetReseauCache.t > 600000) {
+    const c = {}, lim = Date.now() - 7 * 86400000;
+    try { for (const n of stockage.q.noeuds.all()) if (n.preset && (n.dernier_vu || 0) >= lim && reseau.estSurveille(n)) c[n.preset] = (c[n.preset] || 0) + 1; } catch { /* base indisponible */ }
+    presetReseauCache = { t: Date.now(), v: Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k]) => k)[0] || null };
+  }
+  return presetReseauCache.v;
+}
 const fournisseursRelief = {
-  presetCourant: () => (sourceRadio ? sourceRadio.etat().preset : null),
+  presetCourant: presetReseau,
   // Relais / passerelles positionnés et entendus dans les dernières 24 h (un relais muet ne couvre plus rien)
   noeudsReseau: () => {
     const limite = Date.now() - 24 * 3600000;

@@ -2,11 +2,13 @@
 
 [![Latest version](https://img.shields.io/github/v/release/sauveteur71/live-mesh-map-world?label=latest%20version)](https://github.com/sauveteur71/live-mesh-map-world/releases/latest)
 
-**Current version: 1.1.1** — [what's new](https://github.com/sauveteur71/live-mesh-map-world/releases/latest) · [all versions](https://github.com/sauveteur71/live-mesh-map-world/releases)
+**Current version: 1.2.0** — [what's new](https://github.com/sauveteur71/live-mesh-map-world/releases/latest) · [all versions](https://github.com/sauveteur71/live-mesh-map-world/releases)
 
 Self-hosted **live map, monitoring and remote administration** for [Meshtastic](https://meshtastic.org) and [MeshCore](https://meshcore.co.uk) networks, **anywhere in the world**. It listens to your MQTT broker and/or a radio node, decodes packets, keeps the history, estimates radio coverage from terrain and lets you program your nodes over LoRa.
 
 This is the world edition of the French [carte-live-meshtastic](https://github.com/sauveteur71/carte-live-meshtastic): same program, English by default (French available), with worldwide terrain.
+
+📱 **Android app**: `live-mesh-map-X.apk` is attached to every [release](https://github.com/sauveteur71/live-mesh-map-world/releases/latest). It opens your map, finds it on your Wi-Fi, notifies direct messages, critical alerts and reports even when closed, and updates itself.
 
 📖 **Documentation: [the wiki](https://github.com/sauveteur71/live-mesh-map-world/wiki)** (sources in [`wiki/en/`](wiki/en/)).
 

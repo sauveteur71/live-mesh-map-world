@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live mesh map</title>
+<style>
+  :root { --fond: #0f172a; --carte: #1e293b; --texte: #f1f5f9; --doux: #94a3b8; --accent: #2dd4bf; --danger: #f87171; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 17px/1.45 system-ui, sans-serif; padding: 20px 16px 40px; }
+  h1 { font-size: 24px; margin: 8px 0 4px; display: flex; align-items: center; gap: 10px; }
+  h1 .rond { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle, var(--accent) 35%, transparent 37%, transparent 52%, var(--accent) 54%, var(--accent) 60%, transparent 62%); }
+  p.doux, .doux { color: var(--doux); font-size: 15px; }
+  .carte { background: var(--carte); border-radius: 12px; padding: 14px; margin: 12px 0; display: flex; align-items: center; gap: 10px; }
+  .carte .txt { flex: 1; min-width: 0; }
+  .carte b { display: block; font-size: 18px; }
+  .carte span { color: var(--doux); font-size: 14px; word-break: break-all; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 12px 16px; background: var(--accent); color: #04121a; font-weight: 700; }
+  button.second { background: transparent; color: var(--doux); border: 1px solid #334155; padding: 10px 12px; font-weight: 400; }
+  button.danger { background: transparent; color: var(--danger); padding: 10px; font-weight: 400; }
+  label { display: block; margin: 14px 0 4px; color: var(--doux); font-size: 15px; }
+  input { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #0b1222; color: var(--texte); }
+  .erreur { background: #451a1a; color: #fecaca; border-radius: 10px; padding: 12px; margin: 12px 0; font-size: 15px; word-break: break-word; }
+  .ligne { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .exemples code { color: var(--accent); }
+  .reglage { display: flex; align-items: center; gap: 12px; background: var(--carte); border-radius: 12px; padding: 14px; margin: 12px 0; }
+  .reglage .txt { flex: 1; }
+  .reglage input { width: 26px; height: 26px; accent-color: var(--accent); }
+  #trouvees .carte { border: 1px solid var(--accent); }
+</style>
+</head>
+<body>
+  <h1><span class="rond"></span>Live mesh map</h1>
+  <p class="doux">Meshtastic and MeshCore: choose the map to open.</p>
+  <div id="erreur" class="erreur" hidden></div>
+  <div id="liste"></div>
+
+  <h2 style="font-size:19px;margin-top:26px">Add a map</h2>
+  <div class="ligne"><button class="second" id="chercher">🔎 Find the map on this Wi-Fi network</button></div>
+  <div id="trouvees"></div>
+  <label for="adresse">Map address</label>
+  <input id="adresse" type="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://192.168.0.10:8095">
+  <label for="nom">Name (optional)</label>
+  <input id="nom" type="text" placeholder="My map">
+  <div class="ligne"><button id="ajouter">Add and open</button><button class="second" id="demo">Try the demo</button></div>
+  <p class="doux exemples">Examples: <code>http://192.168.0.198:8095</code> (home network), the server’s Tailscale address (<code>http://nas:8095</code> or <code>http://100.x.x.x:8095</code>) or a domain name. Away from home, the map is only reachable if its server is (Tailscale, VPN or public address).</p>
+  <h2 style="font-size:19px;margin-top:26px">Settings</h2>
+  <label class="reglage"><span class="txt"><b>Notifications</b><br><span class="doux">Direct messages, critical alerts and reports, even with the app closed (a discreet notification stays visible while watching).</span></span><input type="checkbox" id="notif"></label>
+  <div class="ligne"><button class="second" id="maj">Check for app updates</button></div>
+  <p class="doux" id="version"></p>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const DEMO = 'http://saint-appo.fr:8095/?consultation';
+  const lire = () => { try { return JSON.parse(Appli.cartes()) || []; } catch (e) { return []; } };
+  const ecrire = (l) => Appli.enregistrerCartes(JSON.stringify(l));
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  function normaliser(u) {
+    u = String(u || '').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    try { const x = new URL(u); if (!x.port && x.protocol === 'http:' && /^(\d+\.){3}\d+$|^[^.]+$/.test(x.hostname)) x.port = '8095'; return x.toString(); } catch (e) { return ''; }
+  }
+  function dessiner() {
+    const l = lire(), cour = Appli.courante();
+    $('#liste').innerHTML = l.length ? l.map((c, i) => `<div class="carte"><div class="txt"><b>${esc(c.nom || c.url)}</b><span>${esc(c.url)}${c.url === cour ? ' · last opened' : ''}</span></div>
+      <button data-ouvrir="${i}">Open</button><button class="danger" data-retirer="${i}" aria-label="Remove">✕</button></div>`).join('')
+      : '<p class="doux">No saved map: add the address of yours below, or try the demo.</p>';
+    document.querySelectorAll('[data-ouvrir]').forEach((b) => (b.onclick = () => Appli.ouvrir(l[+b.dataset.ouvrir].url)));
+    document.querySelectorAll('[data-retirer]').forEach((b) => (b.onclick = () => { if (confirm('Remove this map from the list?')) { l.splice(+b.dataset.retirer, 1); ecrire(l); dessiner(); } }));
+  }
+  $('#ajouter').onclick = () => {
+    const url = normaliser($('#adresse').value);
+    if (!url) { $('#adresse').focus(); return; }
+    const l = lire().filter((c) => c.url !== url);
+    l.unshift({ url, nom: $('#nom').value.trim() });
+    ecrire(l);
+    Appli.ouvrir(url);
+  };
+  $('#demo').onclick = () => Appli.ouvrir(DEMO);
+  const m = /#erreur=(.*)$/.exec(location.href);
+  if (m) { const e = $('#erreur'); e.hidden = false; e.textContent = 'Map unreachable: ' + decodeURIComponent(m[1]) + '. Check the address, that the server is on, and that the phone is on the same network (or on Tailscale).'; }
+  // Recherche des cartes du réseau local (le Pi ou le serveur de la maison, port 8095)
+  $('#chercher').onclick = () => {
+    const b = $('#chercher');
+    b.disabled = true; b.textContent = 'Searching (up to 30 s)…';
+    $('#trouvees').innerHTML = '';
+    try { Appli.chercher(); } catch (e) { b.disabled = false; }
+  };
+  window.cartesTrouvees = (l) => {
+    const b = $('#chercher');
+    b.disabled = false; b.textContent = '🔎 Find the map on this Wi-Fi network';
+    const connues = lire().map((c) => c.url);
+    $('#trouvees').innerHTML = l.length ? l.map((u, i) => `<div class="carte"><div class="txt"><b>Map found</b><span>${esc(u)}${connues.includes(u + '/') ? ' · already saved' : ''}</span></div><button data-trouvee="${i}">Add and open</button></div>`).join('')
+      : '<p class="doux">No map found on this network. Check that the phone is on the same Wi-Fi as the server, or type its address below.</p>';
+    document.querySelectorAll('[data-trouvee]').forEach((x) => (x.onclick = () => {
+      const url = normaliser(l[+x.dataset.trouvee]);
+      const liste = lire().filter((c) => c.url !== url);
+      liste.unshift({ url, nom: '' });
+      ecrire(liste);
+      Appli.ouvrir(url);
+    }));
+  };
+  try { $('#notif').checked = Appli.notifications(); $('#notif').onchange = () => Appli.reglerNotifications($('#notif').checked); } catch (e) { /* hors appli */ }
+  $('#maj').onclick = () => { try { Appli.verifierMaj(); } catch (e) { /* hors appli */ } };
+  try { $('#version').textContent = 'App ' + Appli.version(); } catch (e) { /* hors appli */ }
+  dessiner();
+</script>
+</body>
+</html>

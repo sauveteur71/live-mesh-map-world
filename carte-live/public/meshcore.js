@@ -82,6 +82,7 @@ function appliquerVueReseau() {
   document.querySelectorAll('.outils-mc').forEach((el) => (el.hidden = !etat.config.meshcore || etat.vueReseau === 'meshtastic'));
   document.querySelectorAll('.outils-mt').forEach((el) => (el.hidden = etat.vueReseau === 'meshcore'));
   if (!mc.actif) etat.vueReseau = 'meshtastic';
+  setTimeout(() => { if (typeof majBadgesMessages === 'function') majBadgesMessages(); }, 0); // compteur Messages selon le réseau affiché
   try { localStorage.setItem('gaulix_reseau', etat.vueReseau); } catch { /* stockage indisponible */ }
   document.body.dataset.reseau = etat.vueReseau;
   document.querySelectorAll('.choix-reseau button').forEach((b) => b.classList.toggle('actif', b.dataset.reseau === etat.vueReseau));
@@ -396,7 +397,7 @@ async function mcRendreMessages() {
   const avantLecture = !document.hidden && typeof nonLus !== 'undefined' ? { ...nonLus } : {};
   mcMarquerLus();
   const cleMc = (m) => (m.genre === 'direct' ? 'mcdirect' : 'mc:' + String(m.canal || '?').toLowerCase());
-  if (typeof marquerNouveaux === 'function') marquerNouveaux(l.filter((m) => mcFiltreVoit(cleMc(m))), cleMc, (m) => 'mc' + (m.id != null ? m.id : m.heure + (m.nomDe || '')), (m) => m.sens === 'recu', avantLecture);
+  if (typeof marquerNouveaux === 'function') marquerNouveaux(l.filter((m) => mcListeMontre(cleMc(m))), cleMc, (m) => 'mc' + (m.id != null ? m.id : m.heure + (m.nomDe || '')), (m) => m.sens === 'recu', avantLecture);
   const c = (mc.etat && mc.etat.companion) || {};
   const canaux = c.canaux || [];
   const peutEnvoyer = etat.admin && c.connecte;
@@ -1813,8 +1814,8 @@ function mcNoterMessageRecu(m) {
   const vu = !document.hidden && mc.vue === 'messages' && $('[data-vue="meshcore"]') && $('[data-vue="meshcore"]').classList.contains('actif') && mcFiltreVoit(k);
   if (typeof noterDernierRecu === 'function') noterDernierRecu(k);
   if (!vu) { nonLus[k] = (nonLus[k] || 0) + 1; ecrireLs('gaulix_non_lus', nonLus); }
-  if (m.direct) { if (sons.direct) bip([880, 1320, 1760], 0.12); afficherAlerteDirect(`✉️ Message direct MeshCore de ${m.nomDe || 'inconnu'}`, m.texte); }
-  else if (sons.canaux[String(m.canal || '').toLowerCase()]) bip([noteCanal(String(m.canal).toLowerCase())], 0.18);
+  if (m.direct) { if (sons.direct) sonDirect(); afficherAlerteDirect(`✉️ Message direct MeshCore de ${m.nomDe || 'inconnu'}`, m.texte); }
+  else if (sons.canaux[String(m.canal || '').toLowerCase()]) sonCanal(String(m.canal).toLowerCase());
   majBadgesMessages();
 }
 function mcMajBadgeMessages() {
@@ -1833,7 +1834,9 @@ function mcMajBadgeMessages() {
   }
 }
 // Ce que la liste MeshCore affichée montre : tout, les directs ou un canal (« Relayés » ne vaut pas lecture)
-const mcFiltreVoit = (k) => !mcFiltreMsg || (mcFiltreMsg === 'direct' ? k === 'mcdirect' : mcFiltreMsg.startsWith('c:') && k === 'mc:' + mcFiltreMsg.slice(2).toLowerCase());
+const mcListeMontre = (k) => !mcFiltreMsg || (mcFiltreMsg === 'direct' ? k === 'mcdirect' : mcFiltreMsg.startsWith('c:') && k === 'mc:' + mcFiltreMsg.slice(2).toLowerCase());
+// « Tous » ne vaut pas lecture : les compteurs de chaque canal restent visibles (« ✓ Tout lu » les remet à zéro)
+const mcFiltreVoit = (k) => !!mcFiltreMsg && mcListeMontre(k);
 function mcMarquerLus() {
   if (typeof nonLus === 'undefined' || document.hidden) return;
   let ch = false;

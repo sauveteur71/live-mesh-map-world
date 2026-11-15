@@ -2,7 +2,7 @@
 # Construction depuis la racine du dépôt :  docker build -t carte-live-meshtastic .
 
 # 1. Agents (petit programme qui relie un module USB ou d'un autre réseau à la carte), compilés pour chaque système
-FROM golang:1.24-bookworm AS agents
+FROM golang:1.25-bookworm AS agents
 WORKDIR /src
 COPY agent/go.mod agent/go.sum ./
 RUN go mod download
@@ -12,6 +12,12 @@ RUN set -e; mkdir -p /out; \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/live-mesh-agent-linux-amd64 . ; \
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/live-mesh-agent-raspberrypi-arm64 . ; \
     CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o /out/live-mesh-agent-raspberrypi-armv7 .
+
+# 1 bis. Outil « pmtiles » (extraction du fond de carte hors ligne OpenStreetMap), compilé pour la machine visée
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS pmtiles
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go install -trimpath -ldflags="-s -w" github.com/protomaps/go-pmtiles@v1.31.2 \
+ && cp "$(find /go/bin -name go-pmtiles -type f | head -1)" /pmtiles
 
 # 2. Service Node.js
 FROM node:22-bookworm-slim
@@ -29,6 +35,7 @@ COPY wiki ./wiki
 COPY carte-live/outils ./outils
 COPY carte-live/donnees-ref ./donnees-ref
 COPY --from=agents /out/ ./public/agent/
+COPY --from=pmtiles /pmtiles /usr/local/bin/pmtiles
 RUN mkdir -p /data && chown -R node:node /data
 USER node
 EXPOSE 8095 4404

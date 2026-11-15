@@ -10,7 +10,7 @@ jobs:
   verifier:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -20,9 +20,9 @@ jobs:
         run: |
           v=$(node -p "require('./carte-live/package.json').version")
           grep -q "Current version: $v" README.md || { echo "README.md : indiquer « Current version: $v »"; exit 1; }
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Agent
         working-directory: agent
         run: go vet ./... && go build ./...
@@ -31,7 +31,7 @@ jobs:
     # Tests de l'interface dans un vrai navigateur : carte, rubriques, aide, recherche, DFCI, anglais, pages publiques
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

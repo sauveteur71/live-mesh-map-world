@@ -55,7 +55,7 @@ const etat = {
   alertes: [],
   stats: null,
   couches: { rf: true, voisinage: true, traceroute: true, inactifs: false, animations: true, sommets: true, federation: true, releves: true, routiers: false, dfci: false, radar: false, feux: false },
-  filtresPorts: new Set(Object.keys(PORTS)),
+  filtresPorts: new Set([...Object.keys(PORTS), 'pki']),
   selection: null,
   trajet: null,
   // Secteur : 'dep' (département configuré), 'voisins' (département + limitrophes) ou 'france'
@@ -192,7 +192,16 @@ function initCarte() {
     'Photos aériennes IGN': L.tileLayer(wmts('ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg'), { maxZoom: 19, maxNativeZoom: 19, attribution: ign }),
     'Topographique': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, maxNativeZoom: 17, subdomains: 'abc', attribution: 'Carte &copy; <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA), données &copy; contributeurs OpenStreetMap' }),
   };
+  // Fond hors ligne (carte vectorielle OpenStreetMap servie par la carte elle-même) : visible s'il a été téléchargé
+  const fhl = etat.config.fondHorsLigne;
+  if (fhl && window.protomapsL) {
+    const attrib = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a>';
+    const couche = (flavor) => protomapsL.leafletLayer({ url: '/fonds/fond.pmtiles?v=' + fhl.date, flavor, lang: 'fr', maxDataZoom: fhl.maxzoom, attribution: attrib });
+    fonds['Hors ligne · sombre'] = couche('dark');
+    fonds['Hors ligne · clair'] = couche('light');
+  }
   const surcouches = {
+    'Relief ombré (hors ligne)': L.tileLayer('/api/relief/ombrage/{z}/{x}/{y}.png', { minZoom: 6, maxZoom: 19, maxNativeZoom: 13, opacity: 0.85, zIndex: 250, attribution: 'Relief : IGN RGE ALTI (calcul de la carte)' }),
     'Relief ombré': L.tileLayer(wmts('ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW', 'image/png', 'estompage_grayscale'), { maxZoom: 19, maxNativeZoom: 15, opacity: 0.4, attribution: ign }),
     'Noms des lieux': L.tileLayer(wmts('GEOGRAPHICALNAMES.NAMES'), { maxZoom: 19, maxNativeZoom: 18, className: 'noms-ign', attribution: ign }),
     'Points de repère': L.layerGroup(),
@@ -234,6 +243,20 @@ function initCarte() {
   let choix = fonds[etat.config.fond] ? etat.config.fond : 'Sombre'; // fond par défaut de cette carte (CARTE_FOND)
   try { const c = localStorage.getItem('gaulix_fond'); if (c && fonds[c]) choix = c; } catch { /* stockage indisponible */ }
   fonds[choix].addTo(carte);
+  // Pas d'internet (installation autonome, coupure) : les tuiles du fond échouent en série → fond hors ligne
+  if (fonds['Hors ligne · sombre'] && !/^Hors ligne/.test(choix)) {
+    let echecs = 0, bascule = false;
+    const surErreur = () => {
+      if (bascule || ++echecs < 6) return;
+      bascule = true;
+      const b = document.querySelector(`.menu-couches [data-fond="${/clair|Plan IGN$|Photos|Topo/.test(choix) ? 'Hors ligne · clair' : 'Hors ligne · sombre'}"]`);
+      if (!b) return;
+      b.click();
+      const t = document.createElement('div'); t.className = 'bandeau-consultation'; t.textContent = 'Pas d’accès aux fonds de carte en ligne : fond hors ligne affiché';
+      document.body.appendChild(t); setTimeout(() => t.remove(), 8000);
+    };
+    (fonds[choix].getLayers ? fonds[choix].getLayers() : [fonds[choix]]).forEach((c) => c.on('tileerror', surErreur));
+  }
   // Fond sombre : les surcouches de texte (noms IGN) passent en clair pour rester lisibles
   const majFondSombre = () => {
     document.body.classList.toggle('fond-sombre', /sombre/i.test(choix));
@@ -527,7 +550,11 @@ async function ficheMaj() {
     <div class="grille"><div class="mesure"><span>Installée</span><b>v${esc(r.version)}</b></div><div class="mesure"><span>Dernière publiée</span><b>${r.derniere ? 'v' + esc(r.derniere) : '?'}</b></div></div>
     <p class="note">${r.majDisponible ? `Une nouvelle version est disponible : <a href="${esc(r.url)}" target="_blank" rel="noopener">voir les nouveautés</a>.` : 'La carte est à jour : rien à faire.'}</p>
     ${r.installe ? `
-      ${r.taches ? `<div class="alerte attention">${r.taches} programmation(s) à distance en cours : la mise à jour les interromprait. Attendez leur fin.</div>` : ''}
+      ${r.taches ? `<div class="alerte attention">${r.taches} programmation(s) à distance en cours : la mise à jour les interromprait. Attendez leur fin.
+        <button type="button" class="mini" id="maj-detail">Détail</button>
+        <div id="maj-detail-liste" hidden>${(r.tachesDetail || []).map((t) => `<div class="tache-maj"><b>${esc(t.reseau)} · ${esc(t.nom)}</b> — ${esc(t.avancement)}, lancée ${ilYa(t.debut)} par ${esc(t.auteur || '?')}
+          ${t.courant ? `<br>En ce moment : ${esc(t.courant)}` : ''}<br>Après une mise à jour forcée : <b>${esc(t.reprise)}</b></div>`).join('') || '<div class="note">Détail indisponible.</div>'}
+          <p class="note">Si toutes reprennent toutes seules, vous pouvez forcer : elles continueront après le redémarrage (1 à 3 minutes). Sinon, attendez leur fin.</p></div></div>` : ''}
       ${s.enCours ? `<div class="alerte info-lecture">Mise à jour en cours : ${esc(s.message || '')}</div>` : s.phase === 'echec' || s.phase === 'retour' ? `<div class="alerte attention">Dernière tentative : ${esc(s.message || '')}</div>` : ''}
       <div class="actions-prop">${r.majDisponible || s.enCours ? `<button class="principal" id="maj-go" ${s.enCours ? 'disabled' : ''}>⬆️ Mettre à jour maintenant</button>` : '<button class="mini" id="maj-go" title="Retélécharge la même version : utile seulement si la carte fonctionne mal">↻ Réinstaller la version actuelle</button>'}${r.taches ? '<button id="maj-forcer" class="danger">Forcer quand même</button>' : ''}</div>
       <p class="note">La carte télécharge la nouvelle image, puis redémarre avec les mêmes réglages et les mêmes données (1 à 3 minutes, la page se recharge toute seule). Si la nouvelle version ne démarre pas, l’ancienne est remise en route.</p>`
@@ -545,6 +572,7 @@ async function ficheMaj() {
     try { await postJson('/api/maj', { forcer: !!forcer }); attendreMaj(r.version); } catch (e) { $('#maj-retour').textContent = e.message; }
   };
   const g = $('#maj-go'); if (g) g.onclick = () => lancer(false);
+  const dt = $('#maj-detail'); if (dt) dt.onclick = () => { const l = $('#maj-detail-liste'); l.hidden = !l.hidden; dt.textContent = l.hidden ? 'Détail' : 'Masquer le détail'; };
   const f = $('#maj-forcer'); if (f) f.onclick = () => lancer(true);
 }
 // Attend que la carte revienne avec une autre version (ou la même si l'image n'avait pas changé)
@@ -1139,9 +1167,13 @@ function rendreNoeuds() {
 }
 
 // ---- Panneau : trafic ------------------------------------------------------------
+// Messages privés (chiffrés de bout en bout, PKI) : filtre à part, distinct des paquets d'un canal dont on n'a pas la clé
+const FILTRE_PKI = { nom: 'Messages privés (PKI)', couleur: '#a855f7' };
+const estPki = (p) => p.port === 'chiffre' && (!!p.pki || /PKI/.test(p.resume || ''));
+const cleFiltre = (p) => (estPki(p) ? 'pki' : p.port);
 function rendreFiltres() {
-  $('#filtres').innerHTML = Object.entries(PORTS).map(([cle, p]) =>
-    `<button data-port="${cle}" class="${etat.filtresPorts.has(cle) ? 'actif' : ''}"><i style="background:${p.couleur}"></i>${esc(p.nom)}</button>`).join('');
+  $('#filtres').innerHTML = [...Object.entries(PORTS), ['pki', FILTRE_PKI]].map(([cle, p]) =>
+    `<button data-port="${cle}" class="${etat.filtresPorts.has(cle) ? 'actif' : ''}" ${cle === 'pki' ? 'title="Messages directs chiffrés de bout en bout : la carte voit qu’ils passent, jamais leur contenu"' : ''}><i style="background:${p.couleur}"></i>${esc(p.nom)}</button>`).join('');
 }
 function lignePaquet(p, nouveau) {
   const info = portInfo(p.port);
@@ -1161,7 +1193,7 @@ function lignePaquet(p, nouveau) {
     ${radio ? `<div class="radio">${radio}</div>` : ''}</div>`;
 }
 function ajouterAuFlux(p) {
-  if (!p.premiere || !etat.filtresPorts.has(p.port)) return;
+  if (!p.premiere || !etat.filtresPorts.has(cleFiltre(p))) return;
   if (etat.zone && !dansZoneNum(p.de) && !dansZoneNum(p.passerelle)) return;
   const flux = $('#flux');
   flux.insertAdjacentHTML('afterbegin', lignePaquet(p, true));
@@ -1177,7 +1209,7 @@ async function chargerActiviteInitiale() {
 }
 async function chargerFlux() {
   const paquets = await api('/api/paquets?limite=200');
-  $('#flux').innerHTML = paquets.filter((p) => etat.filtresPorts.has(p.port)).map((p) => {
+  $('#flux').innerHTML = paquets.filter((p) => etat.filtresPorts.has(cleFiltre(p))).map((p) => {
     const r = (p.receptions || [])[0] || {};
     if (etat.zone && !dansZoneNum(p.de) && !dansZoneNum(r.passerelle)) return '';
     return lignePaquet({ ...p, passerelle: r.passerelle, snr: r.snr, rssi: r.rssi }, false);
@@ -1406,32 +1438,51 @@ async function afficherParcours(rowid) {
 const lireLs = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch { return d; } };
 const ecrireLs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* navigation privée */ } };
 const nonLus = lireLs('gaulix_non_lus', {}); // clé : 'c:<canal>' ou 'direct' -> nombre
-const sons = { canaux: {}, direct: true, notifDirect: true, ...lireLs('gaulix_sons', {}) };
+const sons = { canaux: {}, direct: true, notifDirect: true, force: 2, ...lireLs('gaulix_sons', {}) };
 const cleMessage = (m) => (m.vers != null && m.vers !== 0xffffffff ? 'direct' : 'c:' + String(m.canal || '?').toLowerCase());
 const ongletMessagesVisible = () => !document.hidden && !!document.querySelector('.onglets button[data-onglet="messages"].actif');
 // Ce que la liste affichée montre (et que l'utilisateur a donc sous les yeux)
-const filtreVoit = (k) => !filtreMessages || (filtreMessages === 'direct' ? k === 'direct' : k === 'c:' + filtreMessages.slice(2).toLowerCase());
-let contexteAudio = null;
-function bip(frequences, duree = 0.13) {
+const listeMontre = (k) => !filtreMessages || (filtreMessages === 'direct' ? k === 'direct' : k === 'c:' + filtreMessages.slice(2).toLowerCase());
+// Ce qui vaut lecture : un canal (ou les directs) ouvert seul. « Tous les canaux » garde les compteurs de chaque canal,
+// pour voir d'un coup d'œil où sont les nouveaux messages (bouton « ✓ Tout lu » pour les remettre à zéro).
+const filtreVoit = (k) => !!filtreMessages && listeMontre(k);
+let contexteAudio = null, sortieAudio = null;
+// Force des sons : 1 discret (un bip doux), 2 fort (bip-bip net, par défaut), 3 très fort (trois salves stridentes + vibration)
+const FORCES_SON = { 1: { onde: 'sine', gain: 0.3, fois: 1 }, 2: { onde: 'triangle', gain: 0.8, fois: 2 }, 3: { onde: 'square', gain: 0.55, fois: 3 } };
+function bip(frequences, duree = 0.13, force = sons.force) {
   try {
+    const f0 = FORCES_SON[force] || FORCES_SON[2];
     contexteAudio = contexteAudio || new (window.AudioContext || window.webkitAudioContext)();
-    let t = contexteAudio.currentTime;
-    for (const f of frequences) {
-      const o = contexteAudio.createOscillator(), g = contexteAudio.createGain();
-      o.type = 'sine'; o.frequency.value = f;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
-      o.connect(g).connect(contexteAudio.destination); o.start(t); o.stop(t + duree + 0.02);
-      t += duree + 0.04;
+    if (contexteAudio.state === 'suspended') contexteAudio.resume();
+    if (!sortieAudio) { // compresseur : un son plus fort sans saturer les haut-parleurs
+      sortieAudio = contexteAudio.createDynamicsCompressor();
+      sortieAudio.threshold.value = -18; sortieAudio.ratio.value = 6;
+      sortieAudio.connect(contexteAudio.destination);
     }
+    let t = contexteAudio.currentTime;
+    for (let r = 0; r < f0.fois; r++) {
+      for (const f of frequences) {
+        const o = contexteAudio.createOscillator(), g = contexteAudio.createGain();
+        o.type = f0.onde; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(f0.gain, t + 0.01);
+        g.gain.setValueAtTime(f0.gain, t + duree * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+        o.connect(g).connect(sortieAudio); o.start(t); o.stop(t + duree + 0.02);
+        t += duree + 0.035;
+      }
+      t += 0.12;
+    }
+    if (force >= 3 && navigator.vibrate) navigator.vibrate([200, 100, 200]);
   } catch { /* son indisponible */ }
 }
-// Une note différente par canal (déduite de son nom), deux notes montantes pour un message direct
+// Une note différente par canal (déduite de son nom), trois notes montantes pour un message direct
 const NOTES = [523, 587, 659, 698, 784, 880, 988, 1047];
 const noteCanal = (nom) => NOTES[[...String(nom).toLowerCase()].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % NOTES.length];
+const sonCanal = (nom) => bip([noteCanal(nom), noteCanal(nom) * 1.5], 0.14);
+const sonDirect = () => bip([880, 1320, 1760], 0.13, Math.max(2, sons.force || 2));
 function sonner(k) {
-  if (k === 'direct') { if (sons.direct) bip([880, 1320, 1760], 0.12); return; }
+  if (k === 'direct') { if (sons.direct) sonDirect(); return; }
   const nom = k.slice(2);
-  if (sons.canaux[nom]) bip([noteCanal(nom)], 0.18);
+  if (sons.canaux[nom]) sonCanal(nom);
 }
 // Mes nœuds pour les messages directs : module principal et modules en écoute reliés à la carte
 function mesNums() {
@@ -1468,7 +1519,10 @@ function afficherAlerteDirect(titre, texte) {
   clearTimeout(afficherAlerteDirect.t); afficherAlerteDirect.t = setTimeout(() => { a.hidden = true; }, 60000);
 }
 function majBadgesMessages() {
-  const total = Object.entries(nonLus).filter(([k]) => !k.startsWith('mc')).reduce((a, [, n]) => a + n, 0);
+  // Le compteur de l'onglet Messages suit le réseau affiché : Meshtastic, MeshCore ou les deux
+  const vue = etat.vueReseau || 'les-deux';
+  const compte = (k) => (vue === 'meshtastic' ? !k.startsWith('mc') : vue === 'meshcore' ? k.startsWith('mc') : true);
+  const total = Object.entries(nonLus).filter(([k]) => compte(k)).reduce((a, [, n]) => a + n, 0);
   if (typeof mcMajBadgeMessages === 'function') mcMajBadgeMessages();
   const b = $('#onglet-messages');
   if (b) {
@@ -1476,7 +1530,7 @@ function majBadgesMessages() {
     if (!s) { b.insertAdjacentHTML('beforeend', ' <span class="badge-non-lus"></span>'); s = b.querySelector('.badge-non-lus'); }
     s.textContent = total ? String(total) : '';
     s.hidden = !total;
-    s.classList.toggle('direct', !!nonLus.direct);
+    s.classList.toggle('direct', !!((vue !== 'meshcore' && nonLus.direct) || (vue !== 'meshtastic' && nonLus.mcdirect)));
   }
   const tout = Object.values(nonLus).reduce((a, n) => a + n, 0);
   document.title = (tout ? `(${tout}) ` : '') + document.title.replace(/^\(\d+\) /, '');
@@ -1497,11 +1551,16 @@ function reglerSons(canaux) {
   z.dataset.ouvert = z.hidden ? '0' : '1';
   if (z.hidden) return;
   z.innerHTML = `<p class="note">Un bip différent par canal coché, et une alerte (trois notes) pour un message direct reçu par le module de la carte. Le son ne marche qu’après un premier clic dans la page.</p>
+    <label>Force des sons <select id="son-force">
+      <option value="1" ${sons.force == 1 ? 'selected' : ''}>Discret : un bip doux</option>
+      <option value="2" ${sons.force == 2 ? 'selected' : ''}>Fort : bip-bip net</option>
+      <option value="3" ${sons.force == 3 ? 'selected' : ''}>Très fort : trois salves stridentes (+ vibration du téléphone)</option></select></label>
     ${canaux.map((c) => `<label class="case"><input type="checkbox" data-son="${esc(c)}" ${sons.canaux[c.toLowerCase()] ? 'checked' : ''}> 📢 ${esc(c)} <button type="button" class="mini" data-test-son="c:${esc(c.toLowerCase())}">▶</button></label>`).join('')}
     <label class="case"><input type="checkbox" id="son-direct" ${sons.direct ? 'checked' : ''}> ✉️ Messages directs <button type="button" class="mini" data-test-son="direct">▶</button></label>
     <label class="case"><input type="checkbox" id="notif-direct" ${sons.notifDirect ? 'checked' : ''}> Notification de Windows / du téléphone pour un message direct (onglet en arrière-plan)</label>`;
   z.querySelectorAll('[data-son]').forEach((c) => (c.onchange = () => { sons.canaux[c.dataset.son.toLowerCase()] = c.checked; ecrireLs('gaulix_sons', sons); }));
-  z.querySelectorAll('[data-test-son]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); const k = b.dataset.testSon; if (k === 'direct') bip([880, 1320, 1760], 0.12); else bip([noteCanal(k.slice(2))], 0.18); }));
+  z.querySelectorAll('[data-test-son]').forEach((b) => (b.onclick = (e) => { e.preventDefault(); const k = b.dataset.testSon; if (k === 'direct') sonDirect(); else sonCanal(k.slice(2)); }));
+  $('#son-force').onchange = (e) => { sons.force = Number(e.target.value); ecrireLs('gaulix_sons', sons); sonCanal('essai'); };
   $('#son-direct').onchange = (e) => { sons.direct = e.target.checked; ecrireLs('gaulix_sons', sons); };
   $('#notif-direct').onchange = async (e) => {
     sons.notifDirect = e.target.checked; ecrireLs('gaulix_sons', sons);
@@ -1578,9 +1637,15 @@ function barreCanauxHtml(reseau, filtre) {
       + `${x.seul ? '' : `<span class="reseau ${x.r}">${x.r === 'mc' ? 'MC' : 'MT'}</span>`}${x.ic} ${esc(x.nom)}${n ? `<b class="nb">${n}</b>` : ''}${n && t ? `<small>${ilYa(t)}</small>` : ''}</button>`;
   };
   return `<div class="barre-canaux" role="toolbar" aria-label="Canaux : ceux qui ont des messages en attente sont en tête">`
-    + `<button type="button" class="puce-canal tous${!filtre ? ' actif' : ''}" data-puce-r="${reseau}" data-puce-v="">Tous${tot ? `<b class="nb">${tot}</b>` : ''}</button>${el.map(puce).join('')}</div>`;
+    + `<button type="button" class="puce-canal tous${!filtre ? ' actif' : ''}" data-puce-r="${reseau}" data-puce-v="">Tous${tot ? `<b class="nb">${tot}</b>` : ''}</button>${tot ? `<button type="button" class="puce-canal tout-lu" data-tout-lu="${reseau}" title="Remettre à zéro les compteurs de nouveaux messages">✓ Tout lu</button>` : ''}${el.map(puce).join('')}</div>`;
 }
 function brancherBarreCanaux(z) {
+  z.querySelectorAll('[data-tout-lu]').forEach((b) => (b.onclick = () => {
+    const mcr = b.dataset.toutLu === 'mc';
+    for (const k of Object.keys(nonLus)) if (k.startsWith('mc') === mcr) delete nonLus[k];
+    ecrireLs('gaulix_non_lus', nonLus); majBadgesMessages();
+    if (mcr) { if (typeof mcRendreMessages === 'function') mcRendreMessages(); } else rendreMessages();
+  }));
   z.querySelectorAll('[data-puce-r]').forEach((b) => (b.onclick = () => {
     const r = b.dataset.puceR, v = b.dataset.puceV;
     if (r === 'mc') { choisirFiltreMc(v); if (typeof cliquerOnglet === 'function' && !(document.querySelector('[data-vue="meshcore"]') || {}).classList?.contains('actif')) cliquerOnglet('meshcore', 'messages'); else mcRendreMessages(); }
@@ -1603,12 +1668,30 @@ const RE_EPINGLE = /(?:meshand:|geo:|📍)\s*(-?\d{1,2}\.\d{3,7})\s*[,;]\s*(-?\d
 // Aussi, comme l'appli MeshCore : « 45.0451, 3.8852 » seul (3 décimales au moins), et un code DFCI (« KD42F7.5 »)
 const RE_COORDS_NUES = /(?:^|[\s(:])(-?\d{1,2}\.\d{3,7})\s*,\s*(-?\d{1,3}\.\d{3,7})(?![\d.])/;
 const RE_DFCI_MSG = /(?:^|[^A-Z0-9])([A-HK-N]{2}[02468]{2}[A-HK-L]\d(?:\.[1-5])?)(?![A-Z0-9])/;
+// Zone ou tronçon d'un signalement d'une autre carte live : « (zone CODE) » / « (trace CODE) », points en polyline
+// (précision 1e-4°) comptés depuis l'épingle
+const RE_TRACE_MSG = /\((zone|trace) ([?-~]{2,120})\)/;
+function lirePolyline(code, origine) {
+  const pts = [], prec = [Math.round(origine[0] * 1e4), Math.round(origine[1] * 1e4)];
+  let i = 0, k = 0, cour = [];
+  while (i < code.length) {
+    let r = 0, dec = 0, b;
+    do { b = code.charCodeAt(i++) - 63; r |= (b & 0x1f) << dec; dec += 5; } while (b >= 0x20 && i < code.length);
+    const d = r & 1 ? ~(r >> 1) : r >> 1;
+    prec[k] += d; cour.push(prec[k] / 1e4);
+    if (++k === 2) { pts.push(cour); cour = []; k = 0; }
+  }
+  return pts;
+}
 function lireEpingle(texte) {
   const t = String(texte || '');
   const m = RE_EPINGLE.exec(t) || RE_COORDS_NUES.exec(t);
   if (m) {
     const lat = Number(m[1]), lon = Number(m[2]);
-    return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0) ? { lat, lon } : null;
+    if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0))) return null;
+    const z = RE_TRACE_MSG.exec(t);
+    if (z) { try { const pts = lirePolyline(z[2], [lat, lon]); if (pts.length >= (z[1] === 'zone' ? 3 : 1) && pts.every((p) => Math.abs(p[0] - lat) < 1 && Math.abs(p[1] - lon) < 1.5)) return { lat, lon, forme: z[1] === 'zone' ? 'zone' : 'ligne', trace: z[1] === 'zone' ? pts : [[lat, lon], ...pts] }; } catch { /* code abîmé : épingle seule */ } }
+    return { lat, lon };
   }
   const d = typeof DFCI !== 'undefined' && RE_DFCI_MSG.exec(t);
   if (d) { const r = DFCI.depuisDfci(d[1]); if (r) return { lat: r.lat, lon: r.lon, dfci: r.code }; }
@@ -1618,15 +1701,19 @@ function lireEpingle(texte) {
 function texteMessageHtml(texte, qui, heureMsg) {
   const e = lireEpingle(texte);
   if (!e) return esc(texte);
-  return `${esc(texte)} <button type="button" class="mini epingle-msg" data-epingle="${e.lat},${e.lon}" data-qui="${esc(qui || '')}" data-heure="${heureMsg || ''}" title="Afficher la position sur la carte">📍 Voir sur la carte</button>`;
+  return `${esc(texte)} <button type="button" class="mini epingle-msg" data-epingle="${e.lat},${e.lon}" ${e.trace ? `data-trace="${esc(JSON.stringify(e.trace))}" data-forme="${e.forme}"` : ''} data-qui="${esc(qui || '')}" data-heure="${heureMsg || ''}" title="Afficher la position sur la carte">📍 Voir sur la carte</button>`;
 }
 etat.coucheEpingles = null;
 const epinglesVues = new Map(); // "lat,lon" -> marqueur
-function poserEpingle(lat, lon, qui, h, ouvrir) {
+function poserEpingle(lat, lon, qui, h, ouvrir, trace, forme) {
   if (!etat.coucheEpingles) etat.coucheEpingles = L.layerGroup().addTo(carte);
   const k = `${lat},${lon}`;
   let m = epinglesVues.get(k);
   if (!m) {
+    // Zone ou tronçon transmis avec le message : dessinés comme sur la carte qui a fait le signalement
+    const dessin = Array.isArray(trace) && trace.length > 1
+      ? (forme === 'zone' ? L.polygon(trace, { color: '#dc2626', weight: 3, fillOpacity: 0.18, pane: 'traces', interactive: false }) : L.polyline(trace, { color: '#dc2626', weight: 6, opacity: 0.85, pane: 'traces', interactive: false })).addTo(etat.coucheEpingles)
+      : null;
     const div = document.createElement('div');
     div.className = 'popup-lieu';
     div.innerHTML = `<b>📍 Position partagée</b><div class="meta-longue">${qui ? 'par ' + esc(qui) : ''}${h ? ' · ' + ilYa(h) : ''}</div>${blocCoords(lat, lon)}
@@ -1639,7 +1726,7 @@ function poserEpingle(lat, lon, qui, h, ouvrir) {
       const a = ev.target.closest('button[data-a]'); if (!a) return;
       carte.closePopup();
       if (a.dataset.a === 'ici') couvertureIci(L.latLng(lat, lon), 6);
-      else { etat.coucheEpingles.removeLayer(m); epinglesVues.delete(k); }
+      else { etat.coucheEpingles.removeLayer(m); if (dessin) etat.coucheEpingles.removeLayer(dessin); epinglesVues.delete(k); }
     };
     epinglesVues.set(k, m);
   }
@@ -1648,14 +1735,15 @@ function poserEpingle(lat, lon, qui, h, ouvrir) {
 // Positions des messages des 12 dernières heures : épinglées d'office
 function epinglerMessages(liste) {
   const limite = Date.now() - 12 * 3600000;
-  for (const m of liste || []) { if ((m.heure || 0) < limite) continue; const e = lireEpingle(m.texte); if (e) poserEpingle(e.lat, e.lon, m.qui, m.heure, false); }
+  for (const m of liste || []) { if ((m.heure || 0) < limite) continue; const e = lireEpingle(m.texte); if (e) poserEpingle(e.lat, e.lon, m.qui, m.heure, false, e.trace, e.forme); }
 }
 document.addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-epingle]');
   if (!b) return;
   ev.preventDefault(); ev.stopPropagation();
   const [lat, lon] = b.dataset.epingle.split(',').map(Number);
-  poserEpingle(lat, lon, b.dataset.qui, Number(b.dataset.heure) || null, true);
+  let tr = null; try { tr = b.dataset.trace ? JSON.parse(b.dataset.trace) : null; } catch { /* sans tracé */ }
+  poserEpingle(lat, lon, b.dataset.qui, Number(b.dataset.heure) || null, true, tr, b.dataset.forme);
 }, true);
 // Partager un point : dans le formulaire MeshCore si la vue MeshCore est affichée, sinon dans celui de Meshtastic
 // ---- Recherche d'un réglage ou d'une fonction (Ctrl+K) ------------------------------------------------------
@@ -1695,6 +1783,7 @@ const CATALOGUE_REGLAGES = [
   ['Durée de conservation des données', 'Compte › Réglages', 'retention jours historique purge', 'admin', () => ouvrirDlg('reglages', '[name=retentionJours]')],
   ['Canaux Meshtastic à déchiffrer (clés)', 'Compte › Réglages', 'canaux cle psk aq== messages chiffrement longfast', 'admin', () => ouvrirDlg('reglages', '[name=canaux]')],
   ['Télécharger toute la France (relief)', 'Outils', 'relief france paquet mnt télécharger préparer installer carte', 'admin', () => ficheFrance()],
+  ['Fond de carte hors ligne', 'Outils', 'hors ligne offline fond carte sans internet pmtiles raspberry autonome coupure', 'admin', () => ficheFrance()],
   ['Comptes des utilisateurs', 'Compte › Comptes', 'utilisateur ajouter rôle gestionnaire secteur blocage', 'admin', () => ouvrirDlg('comptes')],
   ['Sauvegardes', 'Compte › Sauvegardes', 'sauvegarde restaurer export', 'admin', () => ouvrirDlg('sauvegardes')],
   ['Archive PostgreSQL', 'Compte › Archive', 'postgres base archive', 'admin', () => ouvrirDlg('archive')],
@@ -1920,6 +2009,24 @@ async function formSignalement(lat, lon) {
   // Tronçon ou zone : les points suivants se posent en touchant la carte ; le premier point reste celui du signalement
   const trace = [[lat, lon]];
   let dessin = null;
+  // Zone : le périmètre est formé des points posés sur la carte (le point du signalement, souvent au milieu de la
+  // zone, reste l'épingle et n'entre pas dans le contour, sinon le polygone se croisait en « nœud papillon ») ;
+  // si les points posés se croisent quand même, ils sont remis dans l'ordre autour de leur centre.
+  const seCroisent = (l) => {
+    const cote = (a, b, c) => (b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]);
+    for (let i = 0; i < l.length; i++) for (let j = i + 2; j < l.length; j++) {
+      if (i === 0 && j === l.length - 1) continue;
+      const [a, b, c, d] = [l[i], l[(i + 1) % l.length], l[j], l[(j + 1) % l.length]];
+      if (cote(a, b, c) * cote(a, b, d) < 0 && cote(c, d, a) * cote(c, d, b) < 0) return true;
+    }
+    return false;
+  };
+  const demeler = (l) => {
+    if (l.length < 4 || !seCroisent(l)) return l;
+    const cy = l.reduce((x, p) => x + p[0], 0) / l.length, cx = l.reduce((x, p) => x + p[1], 0) / l.length;
+    return [...l].sort((p, q) => Math.atan2(p[0] - cy, p[1] - cx) - Math.atan2(q[0] - cy, q[1] - cx));
+  };
+  const contour = (forme) => (forme !== 'zone' ? trace : demeler(trace.length >= 4 ? trace.slice(1) : trace));
   const finTrace = () => { carte.off('click', poser); document.body.classList.remove('choix-point'); };
   const majTrace = () => {
     const forme = $('#sig-forme') ? $('#sig-forme').value : 'point', zt = $('#sig-trace');
@@ -1927,23 +2034,23 @@ async function formSignalement(lat, lon) {
     if (!zt) { finTrace(); return; }
     if (forme === 'point') { zt.hidden = true; finTrace(); return; }
     zt.hidden = false;
-    zt.innerHTML = `<b>${trace.length} point(s)</b> : touchez la carte pour ajouter les points ${forme === 'zone' ? 'du périmètre (3 au moins)' : 'du tronçon (2 au moins)'}. <button type="button" class="mini" id="sig-trace-annuler">↩ Retirer le dernier</button>`;
+    zt.innerHTML = `<b>${forme === 'zone' ? trace.length - 1 : trace.length} point(s)</b> : touchez la carte pour ajouter les points ${forme === 'zone' ? 'du périmètre, en faisant le tour de la zone (3 au moins)' : 'du tronçon (2 au moins)'}. <button type="button" class="mini" id="sig-trace-annuler">↩ Retirer le dernier</button>`;
     $('#sig-trace-annuler').onclick = () => { if (trace.length > 1) trace.pop(); majTrace(); };
-    if (trace.length > 1) dessin = (forme === 'zone' ? L.polygon(trace, { color: '#f59e0b', dashArray: '6 6' }) : L.polyline(trace, { color: '#f59e0b', weight: 5, dashArray: '6 6' })).addTo(carte);
+    if (trace.length > 1) dessin = (forme === 'zone' ? L.polygon(contour('zone'), { color: '#f59e0b', dashArray: '6 6' }) : L.polyline(trace, { color: '#f59e0b', weight: 5, dashArray: '6 6' })).addTo(carte);
     carte.off('click', poser); carte.on('click', poser); document.body.classList.add('choix-point');
   };
   function poser(ev) { if (!document.querySelector('#fiche-contenu .form-sig')) { finTrace(); if (dessin) dessin.remove(); return; } if (trace.length < 40) trace.push([ev.latlng.lat, ev.latlng.lng]); majTrace(); }
   $('#sig-forme').onchange = majTrace;
   $('#sig-envoyer').onclick = async () => {
     const forme = $('#sig-forme').value;
-    if (forme !== 'point' && trace.length < (forme === 'zone' ? 3 : 2)) { $('#sig-retour').textContent = forme === 'zone' ? 'Posez au moins 3 points sur la carte pour la zone.' : 'Posez au moins un deuxième point sur la carte pour le tronçon.'; return; }
+    if (forme !== 'point' && trace.length < (forme === 'zone' ? 4 : 2)) { $('#sig-retour').textContent = forme === 'zone' ? 'Posez au moins 3 points sur la carte pour la zone.' : 'Posez au moins un deuxième point sur la carte pour le tronçon.'; return; }
     const mt = [...z.querySelectorAll('[data-mt]:checked')].map((x) => Number(x.dataset.mt)), mc = $('#sig-mc') ? $('#sig-mc').value : '';
     const texte = $('#sig-texte') ? $('#sig-texte').checked : true;
     if (!mt.length && mc === '' && !(await confirmer('Aucun réseau choisi : le signalement restera seulement sur la carte. Continuer ?'))) return;
     const b = $('#sig-envoyer'); b.disabled = true; b.textContent = 'Envoi…';
     ecrireLs('gaulix_sig', { mt, mc, cat, texte });
     try {
-      const corpsSig = { lat, lon, type, titre: $('#sig-titre').value, details: $('#sig-details').value, dureeH: Number($('#sig-duree').value), mt, mc, texte, forme, trace: forme === 'point' ? null : trace };
+      const corpsSig = { lat, lon, type, titre: $('#sig-titre').value, details: $('#sig-details').value, dureeH: Number($('#sig-duree').value), mt, mc, texte, forme, trace: forme === 'point' ? null : contour(forme) };
       let s;
       try { if (!navigator.onLine) throw new TypeError('Failed to fetch'); s = await postJson('/api/signalements', corpsSig); }
       catch (x) {
@@ -2207,7 +2314,7 @@ function rendreMessages() {
   const avantLecture = ongletMessagesVisible() ? { ...nonLus } : {};
   marquerLus(); // le canal affiché est lu : ses compteurs repartent de zéro avant d'être dessinés
   const local0 = etat.radio ? etat.radio.noeudLocal : null;
-  marquerNouveaux(tous.filter((m) => filtreVoit(cleMessage(m))), cleMessage, (m) => 'mt' + m.rowid, (m) => m.de !== local0, avantLecture);
+  marquerNouveaux(tous.filter((m) => listeMontre(cleMessage(m))), cleMessage, (m) => 'mt' + m.rowid, (m) => m.de !== local0, avantLecture);
   const zf = $('#filtre-messages');
   if (zf) {
     zf.innerHTML = barreCanauxHtml('mt', filtreMessages) + `<label title="Le canal choisi est celui que vous lisez et celui où vous écrivez">Canal <select id="sel-filtre-messages">
@@ -2266,7 +2373,7 @@ function ouvrirMenu(ancre, titre, items) {
   m.onclick = (e) => { const x = e.target.closest('[data-i]'); if (!x) return; fermer(); items[Number(x.dataset.i)][1](); };
   const premier = m.querySelector('button'); if (premier) premier.focus();
 }
-function menuNoeud(num, ancre) {
+function menuAuteur(num, ancre) {
   num = num >>> 0;
   const n = etat.noeuds.get(num);
   const moi = etat.radio && etat.radio.noeudLocal === num;
@@ -2282,7 +2389,7 @@ function menuNoeud(num, ancre) {
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-auteur]'); if (!b) return;
   e.preventDefault(); e.stopPropagation();
-  menuNoeud(Number(b.dataset.auteur), b);
+  menuAuteur(Number(b.dataset.auteur), b);
 });
 
 // Clic sur un message : le formulaire bascule sur le bon canal (ou en direct vers l'expéditeur) pour répondre
@@ -3172,8 +3279,9 @@ async function couvertureIci(latlng, hauteur) {
   for (let essai = 0; essai < 20; essai++) {
     r = await voirCouvertureSite(p, 'Point choisi', h, { cadrer: true, erreurs: true, preset: etat.vueReseau === 'meshcore' ? 'MESHCORE_FR' : undefined });
     if (!r || !r.erreur || !/chargement/.test(r.erreur)) break;
-    $('#fiche-contenu').innerHTML = `<div class="vide">${esc(r.erreur)}<br><small>Nouvel essai automatique dans 20 s (${essai + 1}/20)…</small></div>`;
-    await new Promise((ok) => setTimeout(ok, 20000));
+    const delai = /ouverture en cours/.test(r.erreur) ? 3 : 20; // relief déjà sur le disque : quelques secondes
+    $('#fiche-contenu').innerHTML = `<div class="vide">${esc(r.erreur)}<br><small>Nouvel essai automatique dans ${delai} s (${essai + 1}/20)…</small></div>`;
+    await new Promise((ok) => setTimeout(ok, delai * 1000));
     if (!$('#fiche-contenu').textContent.includes('Nouvel essai')) return; // fiche fermée ou remplacée
   }
   if (!r || r.erreur) { $('#fiche-contenu').innerHTML = `<div class="vide">${esc(r && r.erreur ? r.erreur : 'Calcul impossible.')}</div>`; return; }
@@ -6198,6 +6306,8 @@ async function ouvrirBroker() {
     </div>
     ${m.derniereErreur ? `<div class="alerte attention">Dernière erreur (${ilYa(m.derniereErreur.heure)}) : ${esc(m.derniereErreur.message)}</div>` : ''}
     <p class="note">Abonnement : <span class="mono">${esc(m.sujets.join(', '))}</span></p>
+    ${(m.brokersSupplementaires || []).length ? `<h4>Brokers supplémentaires</h4>${m.brokersSupplementaires.map((b) => `<div class="mesure-ligne"><b class="${b.connecte ? 'ok' : 'ko'}">●</b> <span class="mono">${esc(b.url)}</span> · ${esc(b.racine)} · ${b.messages} message(s)${b.derniereErreur && !b.connecte ? ` · <span class="ko">${esc(b.derniereErreur.message)}</span>` : ''}</div>`).join('')}
+      <p class="note">${m.doublonsIgnores || 0} paquet(s) reçu(s) en double par plusieurs brokers, ignoré(s). Réglage : MQTT_BROKERS_SUPPLEMENTAIRES dans le fichier .env.</p>` : '<p class="note">Un autre broker à écouter en même temps (bulle voisine) ? Réglage MQTT_BROKERS_SUPPLEMENTAIRES dans le fichier .env.</p>'}
     <h4>Passerelles entendues par le broker (${m.passerelles.length})</h4>
     ${m.passerelles.length ? `<div class="defil-gw"><table class="voisins"><thead><tr><th>Passerelle</th><th>Sujet</th><th class="num">Messages</th><th>Dernier</th></tr></thead><tbody>
       ${m.passerelles.map((g) => `<tr><td>${esc(g.nom || g.id)}<br><small class="mono">${esc(g.id)}</small></td><td class="mono petit">${esc(g.sujet)}</td><td class="num">${g.messages}</td><td>${ilYa(g.derniere)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vide">Aucune passerelle depuis le démarrage.</div>'}
@@ -6373,6 +6483,7 @@ function brancherInterface() {
   { const b = $('#outil-installer'); if (b) b.onclick = async () => { if (!invitationInstall) return; invitationInstall.prompt(); await invitationInstall.userChoice.catch(() => null); invitationInstall = null; b.hidden = true; }; }
   $('#replier').onclick = () => { $('#panneau').classList.add('replie'); $('#deplier').hidden = false; document.body.classList.add('panneau-replie'); };
   $('#deplier').onclick = () => { $('#panneau').classList.remove('replie'); $('#deplier').hidden = true; document.body.classList.remove('panneau-replie'); };
+  installerDetachement();
   $('#fermer-fiche').onclick = () => { $('#fiche').hidden = true; etat.selection = null; if (etat.trajet) { etat.trajet.remove(); etat.trajet = null; } };
   document.body.addEventListener('click', (e) => {
     const el = e.target.closest('.ligne[data-num], .alerte[data-num], .paquet[data-num]');
@@ -6852,16 +6963,98 @@ async function rendreFrance() {
     <div class="actions-prop">${p.enCours ? '<button class="mini" id="fr-stop">⏹ Arrêter la préparation</button>' : '<button class="mini principal" id="fr-go" title="Installe le paquet « relief France » puis complète département par département ; la carte publique passe ensuite d’elle-même en « tous les départements »">⬇ Télécharger et installer toute la France</button>'}<span class="note">Relief prêt sur le serveur : <b>${r.surDisque}</b> / ${r.total} départements</span></div>
     ${p.enCours ? `<div class="alerte info-lecture"><span class="sablier"></span> Préparation en cours : ${p.faits}/${p.total} départements${p.courant ? ` · département ${esc(p.courant === 'paquet' ? 'paquet GitHub' : p.courant)}${p.etape ? ' : ' + esc(p.etape) : ''}` : p.etape ? ' · ' + esc(p.etape) : ''} · ${duree} min${p.faits > p.deja + 1 && p.total > p.faits ? `, encore ≈ ${Math.round(((Date.now() - p.debut) / 60000 / Math.max(1, p.faits - p.deja)) * (p.total - p.faits) / 60)} h` : ''}. Elle continue même si vous fermez cette page.</div>` : p.fin ? `<p class="note">Dernière préparation : ${p.faits}/${p.total} départements en ${duree} min${p.erreurs.length ? `, ${p.erreurs.length} erreur(s) : ${p.erreurs.slice(0, 5).map((x) => esc(x.code + ' ' + x.erreur)).join(' ; ')}` : ''}.${p.aCompleter && p.aCompleter.length ? ` Points hauts OpenStreetMap manquants pour ${p.aCompleter.length} département(s) (${esc(p.aCompleter.slice(0, 12).join(', '))}${p.aCompleter.length > 12 ? '…' : ''}) : relancez la préparation plus tard, seuls ceux-là seront repris.` : ''}</p>` : ''}
     <p class="note">La préparation installe d’abord le paquet « relief France » publié sur GitHub (≈ 110 Mo, quelques minutes), puis télécharge département par département ce qui manque encore : relief IGN, points hauts, voies d’accès et sites (OpenStreetMap). Sans paquet, comptez plusieurs heures. Environ 250 Mo sur le disque. Les départements déjà prêts sont sautés.</p>
-    <div class="actions-prop"><a class="mini bouton-lien" href="/api/relief/france/paquet" download>📦 Fabriquer le paquet « relief France »</a><span class="note">tous les départements prêts sur ce serveur, en un fichier tar.gz, à publier sur GitHub (version « relief-france »)</span></div>`;
+    <details class="note"><summary>Pour le mainteneur du projet : exporter le paquet « relief France »</summary>
+      <p>Inutile pour faire marcher votre carte. Ce bouton rassemble en un seul fichier (tar.gz) le relief de tous les départements déjà prêts sur ce serveur, pour le publier sur GitHub comme paquet « relief-france » : c’est ce paquet que les autres cartes téléchargent avec le bouton ci-dessus.</p>
+      <div class="actions-prop"><a class="mini bouton-lien" href="/api/relief/france/paquet" download>📦 Exporter le paquet (tar.gz)</a></div></details>`;
+  z.insertAdjacentHTML('beforeend', '<div id="bloc-fond-hl"></div>');
+  rendreFondHorsLigne();
   $('#fr-couv').onchange = async (e) => { try { await postJson('/api/relief/france', { couverture: e.target.value }); } catch (x) { alert(x.message); } rendreFrance(); };
   const go = $('#fr-go'); if (go) go.onclick = async () => { try { await postJson('/api/relief/france', { precharger: true, activer: true }); } catch (x) { alert(x.message); } setTimeout(rendreFrance, 800); };
   const st = $('#fr-stop'); if (st) st.onclick = async () => { try { await postJson('/api/relief/france', { precharger: false }); } catch (x) { alert(x.message); } setTimeout(rendreFrance, 800); };
   if (p.enCours) { clearTimeout(etat.minuterieFrance); etat.minuterieFrance = setTimeout(() => { if ($('#bloc-france')) rendreFrance(); }, 15000); }
 }
 
+// Fond de carte hors ligne : carte vectorielle OpenStreetMap du département gardée sur le serveur (Raspberry Pi
+// autonome, coupure d'internet), et relief ombré calculé sur place
+async function rendreFondHorsLigne() {
+  const z = $('#bloc-fond-hl');
+  if (!z) return;
+  let r;
+  try { r = await api('/api/fond-hors-ligne'); } catch (e) { z.innerHTML = `<div class="vide">${esc(e.message)}</div>`; return; }
+  const f = r.fond, c = r.enCours;
+  z.innerHTML = `<h3>📴 Fond de carte hors ligne</h3>
+    <p class="note">Une carte OpenStreetMap complète (routes, chemins, noms, rivières, forêts) gardée sur ce serveur : elle s’affiche sans internet, idéal pour une installation autonome (Raspberry Pi) ou en cas de coupure. Fonds « Hors ligne · clair / sombre » dans Couches, et « Relief ombré (hors ligne) », calculé à partir du relief déjà préparé.</p>
+    ${f ? `<div class="alerte info-lecture">✔ Fond prêt : <b>${esc(f.nom)}</b> · zoom ${f.maxzoom} · ${f.tailleMo} Mo · ${ilYa(f.date)}. Mis à jour chaque mois automatiquement. Rechargez la page pour le voir dans Couches.</div>` : ''}
+    ${c.actif ? `<div class="alerte info-lecture"><span class="sablier"></span> Téléchargement : ${esc(c.etape || '…')} <button class="mini" id="fhl-stop">⏹ Arrêter</button></div>` : ''}
+    ${c.erreur && !c.actif ? `<div class="alerte attention">Dernier essai : ${esc(c.erreur)}</div>` : ''}
+    ${!r.outil ? '<div class="alerte attention">L’outil d’extraction « pmtiles » manque sur ce serveur : il est inclus dans l’image Docker à partir de la version 2.25 (mettez la carte à jour).</div>' : ''}
+    <div class="parametres">
+      <label>Zone <select id="fhl-zone">
+        ${/^M[NS]\d{2}[EW]\d{3}$/.test(String(((etat.config || {}).departement || {}).code || '')) ? `
+        <option value="departement">Zone de la carte (≈ 50 Mo)</option>
+        <option value="voisins" selected>Zone de la carte et alentours (≈ 150 Mo)</option>
+        <option value="region">Grande région autour (300 km, 1 à 3 Go)</option>` : `
+        <option value="departement">Département de la carte (≈ 50 Mo)</option>
+        <option value="voisins" selected>Département et alentours (≈ 120 Mo)</option>
+        <option value="france">France entière (3 à 5 Go)</option>`}</select></label>
+      <label>Détail <select id="fhl-zoom">
+        <option value="13">Zoom 13 : routes et villages (léger)</option>
+        <option value="14" selected>Zoom 14 : chemins, lieux-dits</option>
+        <option value="15">Zoom 15 : tout, bâtiments (≈ × 2)</option></select></label>
+    </div>
+    <div class="actions-prop"><button class="mini principal" id="fhl-go" ${c.actif || !r.outil ? 'disabled' : ''}>⬇ ${f ? 'Remplacer le fond' : 'Télécharger le fond hors ligne'}</button>${f ? '<button class="mini" id="fhl-suppr">Supprimer</button>' : ''}</div>
+    <p class="note">Données © contributeurs OpenStreetMap (ODbL), carte Protomaps. Seule la zone choisie est téléchargée (quelques secondes à quelques minutes).</p>`;
+  const go = $('#fhl-go'); if (go) go.onclick = async () => { try { await postJson('/api/fond-hors-ligne', { zone: $('#fhl-zone').value, maxzoom: Number($('#fhl-zoom').value) }); } catch (x) { alert(x.message); } rendreFondHorsLigne(); };
+  const st = $('#fhl-stop'); if (st) st.onclick = async () => { await postJson('/api/fond-hors-ligne', { action: 'arreter' }).catch(() => {}); rendreFondHorsLigne(); };
+  const sp = $('#fhl-suppr'); if (sp) sp.onclick = async () => { if (!confirm('Supprimer le fond hors ligne de ce serveur ?')) return; await postJson('/api/fond-hors-ligne', { action: 'supprimer' }).catch((x) => alert(x.message)); rendreFondHorsLigne(); };
+  if (c.actif) { clearTimeout(etat.minuterieFhl); etat.minuterieFhl = setTimeout(() => { if ($('#bloc-fond-hl')) rendreFondHorsLigne(); }, 3000); }
+}
+
 // Téléphone : panneau en tiroir (réduit / moitié / plein), poignée à tirer ou à toucher, état gardé
+// Panneau détachable : Messages, Réglages, Gérer… dans une fenêtre à part, à poser sur un deuxième écran.
+// La fenêtre détachée est la même application, en mode « panneau seul » (?panneau=messages) ; ce qui doit se voir
+// sur la carte (centrer sur un nœud, cadrer une zone) est envoyé à la fenêtre principale.
+const PANNEAU_SEUL = new URLSearchParams(location.search).get('panneau');
+const canalFenetres = typeof BroadcastChannel === 'function' ? new BroadcastChannel('carte-live-fenetres') : null;
+function installerDetachement() {
+  const b = $('#detacher');
+  if (PANNEAU_SEUL) {
+    document.body.classList.add('panneau-seul');
+    if (b) b.hidden = true;
+    document.title = 'Panneau · ' + document.title;
+    // Rubrique demandée, dès que l'interface est prête
+    let essais = 0;
+    const aller = () => { const g = document.querySelector(`.groupes button[data-groupe="${PANNEAU_SEUL}"]`); if (g && typeof allerGroupe === 'function') allerGroupe(PANNEAU_SEUL); else if (++essais < 40) setTimeout(aller, 250); };
+    setTimeout(aller, 300);
+    // Les mouvements de carte demandés ici partent vers la fenêtre principale
+    if (canalFenetres && carte) for (const m of ['setView', 'flyTo', 'fitBounds', 'flyToBounds', 'panTo']) {
+      carte[m] = (...a) => { canalFenetres.postMessage({ carte: m, args: JSON.parse(JSON.stringify(a)) }); return carte; };
+    }
+    return;
+  }
+  if (canalFenetres) canalFenetres.onmessage = (e) => {
+    const d = e.data || {};
+    if (!d.carte || !carte) return;
+    const a = d.args || [];
+    const bornes = (x) => (x && x._southWest ? L.latLngBounds(x._southWest, x._northEast) : x);
+    if (/Bounds$/.test(d.carte)) carte[d.carte === 'flyToBounds' ? 'flyToBounds' : 'fitBounds'](bornes(a[0]), a[1]);
+    else L.Map.prototype[d.carte].apply(carte, a);
+  };
+  if (!b) return;
+  b.onclick = () => {
+    const g = (typeof ergo !== 'undefined' && ergo.groupe) || 'messages';
+    const q = new URLSearchParams(location.search); q.set('panneau', g);
+    const w = window.open(location.pathname + '?' + q.toString(), 'carte-live-panneau', 'popup,width=760,height=980');
+    if (!w) { alert('Le navigateur a bloqué la nouvelle fenêtre : autorisez les fenêtres surgissantes pour cette carte.'); return; }
+    // La carte prend toute la place ici ; le panneau revient quand la fenêtre détachée est fermée
+    $('#replier').click();
+    const suivi = setInterval(() => { if (w.closed) { clearInterval(suivi); $('#deplier').click(); } }, 1000);
+  };
+}
+
 function installerTiroir() {
-  const mq = matchMedia('(max-width: 900px)');
+  if (PANNEAU_SEUL) return; // fenêtre détachée : panneau plein écran, pas de tiroir
+  const mq = matchMedia('(max-width: 700px)');
   const p = $('#panneau');
   if (!p.querySelector('.poignee-tiroir')) p.insertAdjacentHTML('afterbegin', '<div class="poignee-tiroir" title="Tirer ou toucher pour agrandir / réduire"></div>');
   const ETATS = ['reduit', 'moitie', 'plein'];
@@ -6880,6 +7073,8 @@ function installerTiroir() {
     majReduit();
     setTimeout(() => { document.documentElement.style.setProperty('--h-tiroir-reel', p.offsetHeight + 'px'); if (typeof carte !== 'undefined' && carte) carte.invalidateSize(); }, 260);
   };
+  // Hauteur réelle du tiroir suivie en continu (attribution et boutons de la carte juste au-dessus, jamais au milieu)
+  if (window.ResizeObserver) new ResizeObserver(() => { if (mq.matches) document.documentElement.style.setProperty('--h-tiroir-reel', p.offsetHeight + 'px'); }).observe(p);
   appliquer(lireLs('gaulix_tiroir', 'reduit'));
   mq.addEventListener('change', () => appliquer(etat.tiroir || 'reduit'));
   window.addEventListener('resize', () => { const o = document.querySelector('.outils'); if (o) document.documentElement.style.setProperty('--h-outils', o.offsetHeight + 'px'); majReduit(); });
