@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo/live-mesh-map-logo-anime.svg" alt="Live Mesh Map — LoRa mesh network, live" width="640"></p>
+
 # Live mesh map — world edition
 
 [![Latest version](https://img.shields.io/github/v/release/sauveteur71/live-mesh-map-world?label=latest%20version)](https://github.com/sauveteur71/live-mesh-map-world/releases/latest)
