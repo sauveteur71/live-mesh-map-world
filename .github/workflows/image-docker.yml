@@ -146,11 +146,17 @@ jobs:
           v=${{ steps.v.outputs.version }}
           prec=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
           {
-            echo "## Nouveautés${prec:+ depuis $prec}"
+            echo "## What's new${prec:+ since $prec}"
             echo
-            git log ${prec:+$prec..}HEAD --no-merges --format='%s' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+ ?:' | sed -E 's/^([0-9.]+) ?: ?/- **\1** : /'
+            # Text written in carte-live/NOUVEAUTES.md (section "## <version>"); otherwise, the list of commits
+            sect=$(awk -v v="## $v" '$0==v{f=1;next} f&&/^## /{exit} f' carte-live/NOUVEAUTES.md 2>/dev/null)
+            if [ -n "$(echo "$sect" | tr -d '[:space:]')" ]; then
+              echo "$sect"
+            else
+              git log ${prec:+$prec..}HEAD --no-merges --format='%s' | grep -vE '^(Version |Merge )' | sed -E 's/^/- /'
+            fi
             echo
-            echo "## Mise à jour"
+            echo "## Update"
             echo
             echo '`docker compose pull && docker compose up -d`'
           } > notes.md
