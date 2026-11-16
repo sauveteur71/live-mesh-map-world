@@ -16,6 +16,7 @@
 - [[Remote programming|Programmation à distance]]
 - [[Teams|Équipes]]
 - [[Reports|Signalements]]
+- [[Growing the network|Faire grandir le réseau]]
 - [[MeshCore]]
 - [[Cross-network bridge|Passerelle inter-réseaux]]
 - [[Accounts and security|Comptes et sécurité]]
