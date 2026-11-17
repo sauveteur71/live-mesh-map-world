@@ -10,6 +10,9 @@ The section of each version is copied as is into the GitHub release notes.
 ### 🗂️ Relay register
 - **All relays and gateways in one table** (Tools menu): site, permission and its date, protected area, last on-site visit (orange after 6 months, red after a year), power, firmware, last packet. Relays without written permission and those not visited for a year are counted at the top. CSV export.
 
+### 🏔️ 3D network view
+- **New 3D view** (Radio coverage): relays, gateways and MeshCore repeaters placed on the terrain, links of the last 24 h coloured by SNR, adjustable terrain exaggeration, dark, aerial or topographic base map, slow rotation.
+
 ### 📡 Radio and hardware
 - **Cable loss calculator**: next to cable losses (installation sheet, profile and link budget), pick the cable type, length, connectors and lightning arrester; the loss follows the network frequency.
 - **"📻 Amateur radio" badge** on nodes set to Meshtastic licensed mode (no encryption, callsign).
