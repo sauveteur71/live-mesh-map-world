@@ -2,7 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
-## 1.4.1
+## 1.5.0
+
+### 🌊 Rivers
+- **New optional “Rivers” layer** (France): water height, flow and trend from the public gauging stations in the area (Hub'Eau, the same measurements as Vigicrues), with a 24 h curve. Free, no account, no hardware.
+- **Flood alerts** on the map: fast rise (20 cm/h by default, adjustable) and height thresholds chosen per station. Dams and reservoirs do not raise rise alerts.
+
+### 🧰 Monitoring
+- **Background task failures shown in the alerts**: river readings failing, APRS-IS unreachable.
 
 ### ✉️ Messages
 - **A channel's history always shows**: choosing a channel (or direct messages) loads its own history. A quiet channel, such as an association's, is no longer hidden by hundreds of messages on chatty channels.
