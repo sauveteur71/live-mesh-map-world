@@ -4,6 +4,11 @@ The section of each version is copied as is into the GitHub release notes.
 
 ## 1.4.1
 
+### ✉️ Messages
+- **A channel's history always shows**: choosing a channel (or direct messages) loads its own history. A quiet channel, such as an association's, is no longer hidden by hundreds of messages on chatty channels.
+- **Messages kept 90 days** (adjustable: *Advanced settings › Messages and MQTT*) instead of the traffic retention (7 days by default).
+- **Impossible direct message flagged before sending**: if the node does not know the recipient's public key yet (it would refuse the message), the map says so, explains why (NodeInfo not received yet, firmware older than 2.5) and offers to write on a channel instead.
+
 ### 🛠️ Fixes
 - **Panel tabs** (Network, Messages, Coverage, Manage, Settings) no longer overlap on a computer screen.
 - **English interface**: durations ("2 h ago"), hops, telemetry (mains, channel, airtime), dashboard summaries and the days of the 7-day health table are translated.
