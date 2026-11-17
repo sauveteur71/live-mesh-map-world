@@ -8,6 +8,7 @@ The section of each version is copied as is into the GitHub release notes.
 - **Android app**: the map no longer sits under the status bar (time, icons) or the navigation bar on Android 15, and the keyboard no longer covers the input.
 - **Layers menu in three columns** on a computer (base map and waypoints · network · around the network): it fits the screen height instead of overflowing.
 - **Disabled layer** (Rivers, LoRaWAN sensors, APRS stations): the notice stays longer and, for an administrator, a click opens Advanced settings on the right group.
+- **APRS stations clearly distinct from nodes**: white square marked “A” (purple edge for LoRa APRS, blue for others) and an “APRS” tag before the callsign.
 - **Help under every advanced setting**: the 36 settings that had none now explain what they do and their default.
 - **River and sensor curves** easier to read: min and max values in a margin, start and end of the curve spelled out (“8 h ago” … “3 h ago”); no more text over the line.
 
