@@ -12,6 +12,7 @@ The section of each version is copied as is into the GitHub release notes.
 
 ### 🏔️ 3D network view
 - **New 3D view** (Radio coverage): relays, gateways and MeshCore repeaters placed on the terrain, links of the last 24 h coloured by SNR, adjustable terrain exaggeration, dark, aerial or topographic base map, slow rotation.
+- It follows the **department being studied** on the map.
 
 ### 📡 Radio and hardware
 - **Cable loss calculator**: next to cable losses (installation sheet, profile and link budget), pick the cable type, length, connectors and lightning arrester; the loss follows the network frequency.
@@ -19,15 +20,21 @@ The section of each version is copied as is into the GitHub release notes.
 
 ### 📻 APRS stations
 - **New APRS stations layer**: LoRa APRS trackers, iGates and digipeaters (433.775 MHz) and other APRS stations in the area, read from APRS-IS read-only (nothing transmitted, no passcode). Off by default: *Advanced settings › APRS (amateur radio)*.
+- **Mic-E positions read** (Kenwood, Yaesu… handhelds and mobiles), **amateur radio callsign required** to enable the layer, area followed when the map's department changes.
 
 ### 🛰️ Export for ATAK
 - **Network as KML** (relays, nodes, radio links coloured by SNR) for ATAK and Google Earth, plus a live KML link refreshed every minute.
+- **Live KML link reliable behind an https reverse proxy**: it uses the address seen by the browser.
 
 ### ⚠ Installing a relay the right way
 - **Site fields on the installation sheet**: permission (written, signed agreement, verbal, pending…), its date, protected area and last visit.
 - **Warning on suggested sites**: a high point is not an authorised site. Landowner or municipality consent, no relay in a cemetery or place of worship, heritage authority approval near historic monuments, coastal rules and protected natural areas.
 
+### ⚡ Lighter page
+- **Administration screens loaded on demand**: a visitor downloads 17% less when opening the map; for a member they are preloaded in the background.
+
 ### 🔒 Security
+- **Known flaws in dependencies checked on every push**, in addition to the weekly check.
 - **3D view library updated** (MapLibre 6): fixes a known flaw in the previous version.
 - **Register CSV export**: a node name starting like a formula (= + - @) is no longer run by the spreadsheet.
 
