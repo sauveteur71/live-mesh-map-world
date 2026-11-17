@@ -5,6 +5,7 @@ The section of each version is copied as is into the GitHub release notes.
 ## 1.5.3
 
 ### 📱 Phone
+- **Icons on phones**, as on tablets: panel sections (🗺️ Network, 💬 Messages, 📶 Coverage, 🛠️ Manage, ⚙️ Settings) and bottom bar (🗂️ Layers, 📡 Radio coverage, 🧰 Tools, 👤 Login) with one word below. Computers keep the full display.
 - **Header that fits a phone**: the live status becomes a coloured dot, official alerts shrink to their icons and count (details on click).
 - **More compact bottom bar**: smaller area selector and link duration, shorter search text, so fewer buttons are cut off.
 
