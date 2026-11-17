@@ -2,6 +2,11 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.2
+
+### 🗺️ Legend
+- **Layer symbols in the legend**: APRS stations (LoRa APRS and others), LoRaWAN sensors and gateways, river stations (normal, flooding, dam), shown as soon as the layer is on.
+
 ## 1.5.1
 
 ### 🛠️ Fixes and comfort
