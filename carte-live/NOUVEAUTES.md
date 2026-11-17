@@ -2,6 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.4
+
+### 📣 Nodes to invite
+- **Screen redone**: one card per node with its full name (it was cut to one letter), its preset, distance and when it was seen; filter “in the map's area”, 25, 50 or 100 km; clear steps (① sentinel node to write, ② choose the nodes); the “Invite” button explains what is missing while no sentinel is connected.
+
+### 🤝 “Join the network” page
+- **MeshCore-only network**: with the channel link and hop limit left empty, the page no longer shows the Meshtastic part (like the MeshCore part when empty).
+
 ## 1.5.3
 
 ### 🛠️ Fixes
