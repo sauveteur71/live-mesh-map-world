@@ -27,6 +27,10 @@ The section of each version is copied as is into the GitHub release notes.
 - **Site fields on the installation sheet**: permission (written, signed agreement, verbal, pending…), its date, protected area and last visit.
 - **Warning on suggested sites**: a high point is not an authorised site. Landowner or municipality consent, no relay in a cemetery or place of worship, heritage authority approval near historic monuments, coastal rules and protected natural areas.
 
+### 🔒 Security
+- **3D view library updated** (MapLibre 6): fixes a known flaw in the previous version.
+- **Register CSV export**: a node name starting like a formula (= + - @) is no longer run by the spreadsheet.
+
 ## 1.3.0
 
 ### 🔌 Plug in a node, nothing to set up
