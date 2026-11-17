@@ -2,6 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.4.1
+
+### 🛠️ Fixes
+- **Panel tabs** (Network, Messages, Coverage, Manage, Settings) no longer overlap on a computer screen.
+- **English interface**: durations ("2 h ago"), hops, telemetry (mains, channel, airtime), dashboard summaries and the days of the 7-day health table are translated.
+- **Relay register**: limited to the relays and gateways of the map's area (no longer the whole country), in a wider panel so the table stays readable.
+- **Demo mode on a phone**: the banner is readable (it showed as a circle in the middle of the screen) and can be closed.
+
 ## 1.4.0
 
 ### 📡 Alerts sent by radio

@@ -1,5 +1,6 @@
 **Getting started**
 - [[Home]]
+- [[Screenshots|Aperçu-en-images]]
 - [[Installation]]
 - [[Connect the network|Brancher le réseau]]
 - [[Connect a node|Connecter un module]]
