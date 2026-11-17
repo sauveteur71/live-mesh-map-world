@@ -2,6 +2,12 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.3
+
+### 📱 Phone
+- **Header that fits a phone**: the live status becomes a coloured dot, official alerts shrink to their icons and count (details on click).
+- **More compact bottom bar**: smaller area selector and link duration, shorter search text, so fewer buttons are cut off.
+
 ## 1.5.2
 
 ### 🗺️ Legend
