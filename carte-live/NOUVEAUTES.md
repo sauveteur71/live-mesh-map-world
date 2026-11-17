@@ -7,7 +7,21 @@ The section of each version is copied as is into the GitHub release notes.
 ### 📡 Alerts sent by radio
 - **Warnings and hotspots already sent stand out**: green edge, "Already sent by radio" tick, time, sender and channels; the button becomes "Send again". New alerts keep their colour. Shared by all users and kept across restarts.
 
+### 🗂️ Relay register
+- **All relays and gateways in one table** (Tools menu): site, permission and its date, protected area, last on-site visit (orange after 6 months, red after a year), power, firmware, last packet. Relays without written permission and those not visited for a year are counted at the top. CSV export.
+
+### 📡 Radio and hardware
+- **Cable loss calculator**: next to cable losses (installation sheet, profile and link budget), pick the cable type, length, connectors and lightning arrester; the loss follows the network frequency.
+- **"📻 Amateur radio" badge** on nodes set to Meshtastic licensed mode (no encryption, callsign).
+
+### 📻 APRS stations
+- **New APRS stations layer**: LoRa APRS trackers, iGates and digipeaters (433.775 MHz) and other APRS stations in the area, read from APRS-IS read-only (nothing transmitted, no passcode). Off by default: *Advanced settings › APRS (amateur radio)*.
+
+### 🛰️ Export for ATAK
+- **Network as KML** (relays, nodes, radio links coloured by SNR) for ATAK and Google Earth, plus a live KML link refreshed every minute.
+
 ### ⚠ Installing a relay the right way
+- **Site fields on the installation sheet**: permission (written, signed agreement, verbal, pending…), its date, protected area and last visit.
 - **Warning on suggested sites**: a high point is not an authorised site. Landowner or municipality consent, no relay in a cemetery or place of worship, heritage authority approval near historic monuments, coastal rules and protected natural areas.
 
 ## 1.3.0

@@ -256,6 +256,7 @@ app.get('/api/config', (req, res) => {
   res.json({
     fonctionsMasquees: typeof fonctionsMasquees !== 'undefined' ? [...fonctionsMasquees] : [],
     version: infosVersion(),
+    freqMHz: Number(process.env.RADIO_FREQ_MHZ) || 869.525,
     titre: config.carte.titre,
     outils: { client: config.urlClient || '', flasher: config.urlFlasher || '' },
     centre: [config.carte.centreLat, config.carte.centreLon],
@@ -3636,6 +3637,12 @@ app.get('/api/alertes-officielles', (req, res) => res.set('Cache-Control', 'no-s
   fonctionsMasquees: [...fonctionsMasquees] }));
 // ---- Feux actifs vus par satellite (NASA FIRMS) : couche de la carte, alertes sur la zone, envoi radio à la demande ----
 const feux = require('./feux').creerFeux({ config, journal, diffuser });
+// Couche APRS (dont LoRa APRS 433,775 MHz) : lecture seule sur APRS-IS, zone département + voisins (APRS_IS=oui)
+const aprs = require('./aprs').creerAprs({ zone: () => (zoneVoisins() || {}).bbox || config.zone, journal, version: VERSION });
+app.get('/api/aprs', (req, res) => {
+  const heures = Math.min(Math.max(Number(req.query.heures) || 6, 1), 24);
+  res.json({ etat: aprs.etat(), stations: aprs.etat().actif ? aprs.liste(heures) : [] });
+});
 app.get('/api/feux', (req, res) => {
   if (fonctionMasquee('feux')) return res.status(404).json({ erreur: 'Fonction masquée par l’administrateur' });
   res.set('Cache-Control', 'no-store').json(feux.etat(Number(req.query.heures) || 24));
@@ -3902,7 +3909,7 @@ const exporter = (f, type) => (req, res) => {
   if (!exportsCarte.jetonOk(req)) return res.status(401).json({ erreur: 'Jeton d’export requis (?jeton=…)' });
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
-  try { const r = f(req); if (type === 'text') res.type('text/plain; version=0.0.4').send(r); else if (typeof r === 'string') { res.setHeader('Content-Disposition', 'attachment; filename="relais.gpx"'); res.type(type).send(r); } else res.type(type).send(JSON.stringify(r)); } catch (e) { res.status(500).json({ erreur: e.message }); }
+  try { const r = f(req); if (type === 'text') res.type('text/plain; version=0.0.4').send(r); else if (typeof r === 'string') { res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.path)}"`); res.type(type).send(r); } else res.type(type).send(JSON.stringify(r)); } catch (e) { res.status(500).json({ erreur: e.message }); }
 };
 app.get('/api/export/noeuds.geojson', exporter(() => exportsCarte.noeudsGeoJSON(), 'application/geo+json'));
 app.get('/api/export/liens.geojson', exporter((req) => exportsCarte.liensGeoJSON(Math.min(Math.max(Number(req.query.heures) || 24, 1), 168)), 'application/geo+json'));
@@ -3910,6 +3917,11 @@ app.get('/api/export/resume.json', exporter(() => exportsCarte.resume(), 'applic
 app.get('/publique', envoyerPage('publique.html'));
 app.get('/metrics', exporter(() => exportsCarte.metriques(), 'text'));
 app.get('/api/export/relais.gpx', exporter(() => exportsCarte.relaisGpx(), 'application/gpx+xml'));
+app.get('/api/export/reseau.kml', exporter((req) => exportsCarte.reseauKml({ heures: Math.min(Math.max(Number(req.query.heures) || 24, 1), 168), titre: String(config.carte.titre || 'Carte live') }), 'application/vnd.google-earth.kml+xml'));
+app.get('/api/export/reseau-direct.kml', exporter((req) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  return exportsCarte.reseauKmlLive(`${base}/api/export/reseau.kml${req.query.jeton ? '?jeton=' + encodeURIComponent(String(req.query.jeton)) : ''}`);
+}, 'application/vnd.google-earth.kml+xml'));
 
 // ---- Domotique : Home Assistant et Node-RED par MQTT (DOMOTIQUE_MQTT_URL) --------------------------------------
 const domotique = require('./domotique').creerDomotique({
