@@ -30,3 +30,4 @@
 **🇫🇷 Français**
 - [[Documentation en français|Français-Home]]
 - [[Rivers and flood alerts|Rivières-et-alerte-crue]]
+- [[LoRaWAN sensors|Capteurs-LoRaWAN]]

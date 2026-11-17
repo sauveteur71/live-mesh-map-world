@@ -8,6 +8,10 @@ The section of each version is copied as is into the GitHub release notes.
 - **New optional “Rivers” layer** (France): water height, flow and trend from the public gauging stations in the area (Hub'Eau, the same measurements as Vigicrues), with a 24 h curve. Free, no account, no hardware.
 - **Flood alerts** on the map: fast rise (20 cm/h by default, adjustable) and height thresholds chosen per station. Dams and reservoirs do not raise rise alerts.
 
+### 📟 LoRaWAN sensors
+- **New optional “LoRaWAN sensors” layer**: the sensors of a The Things Network (v3) or ChirpStack (v4) application on the map (water level, weather, rain…), with their latest readings, a 24 h curve, the gateways that received them and the signal (RSSI, SNR). Read-only through the application's MQTT; members only by default.
+- **Threshold alerts** chosen per sensor (“level-post.height > 150”, “battery < 3.3”), and an alert if the MQTT server stays unreachable.
+
 ### 🧰 Monitoring
 - **Background task failures shown in the alerts**: river readings failing, APRS-IS unreachable.
 
@@ -15,6 +19,7 @@ The section of each version is copied as is into the GitHub release notes.
 - **A channel's history always shows**: choosing a channel (or direct messages) loads its own history. A quiet channel, such as an association's, is no longer hidden by hundreds of messages on chatty channels.
 - **Messages kept 90 days** (adjustable: *Advanced settings › Messages and MQTT*) instead of the traffic retention (7 days by default).
 - **Impossible direct message flagged before sending**: if the node does not know the recipient's public key yet (it would refuse the message), the map says so, explains why (NodeInfo not received yet, firmware older than 2.5) and offers to write on a channel instead.
+- **“Exchange info with this node” button** in that warning: the map sends its node's info (with its public key) to the node, which replies with its own; the direct message then goes through.
 
 ### 🛠️ Fixes
 - **Panel tabs** (Network, Messages, Coverage, Manage, Settings) no longer overlap on a computer screen.
