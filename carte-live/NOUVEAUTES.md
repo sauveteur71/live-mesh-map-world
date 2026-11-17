@@ -2,6 +2,13 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.1
+
+### 🛠️ Fixes and comfort
+- **Android app**: the map no longer sits under the status bar (time, icons) or the navigation bar on Android 15, and the keyboard no longer covers the input.
+- **Layers menu in three columns** on a computer (base map and waypoints · network · around the network): it fits the screen height instead of overflowing.
+- **Disabled layer** (Rivers, LoRaWAN sensors, APRS stations): the notice stays longer and, for an administrator, a click opens Advanced settings on the right group.
+
 ## 1.5.0
 
 ### 🌊 Rivers
