@@ -7,8 +7,14 @@ The section of each version is copied as is into the GitHub release notes.
 ### 📣 Nodes to invite
 - **Screen redone**: one card per node with its full name (it was cut to one letter), its preset, distance and when it was seen; filter “in the map's area”, 25, 50 or 100 km; clear steps (① sentinel node to write, ② choose the nodes); the “Invite” button explains what is missing while no sentinel is connected.
 
+### 🇫🇷 MeshCore: settings recommended in France
+- **MeshCore France configurator** offered where repeaters get installed: “Join” page, MeshCore maintenance, sites suggested for a relay.
+- **Configurator backup imported** into MeshCore maintenance (.json file): hardware, firmware, date and settings kept for each repeater (never the passwords or the private key, which stay in the browser).
+- **French recommendations checked** for each repeater, from what the map hears: department number at the start of the name, position advertised, 2-byte paths (path.hash.mode 1), one flood advert a day, French preset 869.618 MHz · 62.5 kHz · SF8 · CR8.
+
 ### 🤝 “Join the network” page
 - **MeshCore-only network**: with the channel link and hop limit left empty, the page no longer shows the Meshtastic part (like the MeshCore part when empty).
+- **MeshCore part completed**: repeater regions, a “French preset” button that fills everything in, minimal repeater commands generated on the page, links to the configurator and recommended settings.
 
 ## 1.5.3
 
