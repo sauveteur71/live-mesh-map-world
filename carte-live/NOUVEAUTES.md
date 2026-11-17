@@ -4,6 +4,9 @@ The section of each version is copied as is into the GitHub release notes.
 
 ## 1.5.3
 
+### 🛠️ Fixes
+- **The map's own MeshCore messages** (warnings sent by radio, messages written from the map): when they come back repeated by a relay or seen by an observer, they are no longer marked “new” or counted as unread.
+
 ### 📱 Phone
 - **Icons on phones**, as on tablets: panel sections (🗺️ Network, 💬 Messages, 📶 Coverage, 🛠️ Manage, ⚙️ Settings) and bottom bar (🗂️ Layers, 📡 Radio coverage, 🧰 Tools, 👤 Login) with one word below. Computers keep the full display.
 - **Header that fits a phone**: the live status becomes a coloured dot, official alerts shrink to their icons and count (details on click).
