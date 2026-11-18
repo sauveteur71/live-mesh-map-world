@@ -2,6 +2,16 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.8
+
+### 📱 Phone and Android app
+- **Bottom drawer**: when fully open, it stops below the title and the place search (even with enlarged text); a **▾** button collapses it, and the handle is bigger.
+- **App version** shown next to the map version (compare phone and tablet), and in the back-button menu title.
+
+### 🛠️ Fixes
+- **Alerts sent over MeshCore**: their echo relayed by repeaters no longer counts as an unread message.
+- **Official alerts**: when the 📡 Send button is missing, the reason is shown (module not linked, no named channel).
+
 ## 1.5.7
 
 ### 🛠️ Fixes
