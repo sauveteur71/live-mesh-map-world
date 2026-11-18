@@ -7,6 +7,9 @@ The section of each version is copied as is into the GitHub release notes.
 ### 🏔️ Link profile in 3D
 - **“View this profile in 3D” button** in the terrain profile: the link opens in the 3D view, seen from the side, on the real terrain. The line of sight is coloured section by section (green clear, orange Fresnel zone partly blocked, red blocked by the terrain), the 1st Fresnel zone is drawn as a light volume, antenna masts at their height, and the main obstacle is marked. Heights follow the “Terrain ×” slider, and the view rotates with the mouse like the rest of the 3D view.
 
+### 🛠️ Fixes
+- **“PC USB module” that did nothing**: the cause is now shown on screen (HTTP address, browser without USB, empty port list: cable or CP210x / CH340 driver, port already open in another app) and success is confirmed.
+
 ## 1.5.5
 
 ### 🛠️ Fixes
