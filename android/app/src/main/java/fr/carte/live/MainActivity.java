@@ -361,7 +361,7 @@ public class MainActivity extends Activity {
         if (vue.canGoBack()) { vue.goBack(); return; }
         if (String.valueOf(vue.getUrl()).startsWith(ACCUEIL)) { finish(); return; }
         new AlertDialog.Builder(this)
-                .setTitle("Live mesh map")
+                .setTitle("Live mesh map · app " + version())
                 .setItems(new String[]{"Change map", "Reload", "Check for updates", "Quit"}, (d, i) -> {
                     if (i == 0) vue.loadUrl(ACCUEIL);
                     else if (i == 1) vue.reload();

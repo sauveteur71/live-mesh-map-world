@@ -571,6 +571,9 @@ function afficherVersion(v) {
   el.href = v.url;
   el.classList.toggle('maj', !!v.majDisponible);
   el.textContent = v.majDisponible ? `v${v.version} · v${v.derniere} disponible` : `v${v.version}${v.derniere ? ' · à jour' : ''}`;
+  // Opened in the Android app: its version next to the map's (to compare phone and tablet)
+  const appli = /CarteLiveAndroid\/([\w.-]+)/.exec(navigator.userAgent);
+  if (appli) el.textContent += ` · appli ${appli[1]}`;
   el.title = v.majDisponible ? `Nouvelle version v${v.derniere} publiée sur GitHub : cliquez pour ${etat.admin ? 'mettre à jour' : 'voir les nouveautés'}` : v.derniere ? `Version installée v${v.version} — c'est la dernière publiée sur GitHub` : `Version installée v${v.version}`;
   // Administrateur : fenêtre de mise à jour en un clic. Sinon (pas connecté, ou mode consultation) : on explique comment
   // mettre à jour au lieu de partir sur GitHub ; les nouveautés restent accessibles par un lien.
