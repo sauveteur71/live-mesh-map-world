@@ -2,6 +2,11 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.5
+
+### 🛠️ Fixes
+- **Offline base map that would not download** in the Docker image (“extraction stopped (code 1)”): the extraction tool had no root certificates to reach the map server over https. They are now included, and on failure the message says why (certificates, server unreachable, disk full).
+
 ## 1.5.4
 
 ### 📣 Nodes to invite
