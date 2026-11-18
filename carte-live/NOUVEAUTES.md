@@ -2,6 +2,12 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.7
+
+### 🛠️ Fixes
+- **USB and Bluetooth with the map opened on the PC itself** (`http://localhost:8095`): “Connect a module › USB” is no longer greyed out (it required HTTPS, which Chrome does not need on localhost).
+- **Ctrl+K search**: a Tools menu item (e.g. “PC USB module”) is launched directly, instead of only being highlighted in the menu.
+
 ## 1.5.6
 
 ### 🏔️ Link profile in 3D
