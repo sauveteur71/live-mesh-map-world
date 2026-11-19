@@ -2,6 +2,12 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.13
+
+### 🔧 Fixes
+- **Terrain profile and link budget outside France**: when the French IGN service has no elevation (anywhere outside France), the map now falls back to the world service instead of failing with “Cannot read properties of null”; the link-budget frequency follows `RADIO_FREQ_MHZ` (906.875 MHz for the US) instead of being fixed at the European 869.525 MHz.
+- **Link between two points**: the start and end cards showed “antenna undefined m”; they now show the antenna height you entered.
+
 ## 1.5.12
 
 ### 🗺️ Terrain of the area (world map)
