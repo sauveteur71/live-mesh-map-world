@@ -2,6 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.9
+
+### 🔑 Accounts
+- **Forgotten password**: “Forgot your password?” link below sign-in. With an outgoing mail server set (*Settings › Advanced settings › E-mail*), a link valid for 1 hour is e-mailed; otherwise the request shows in *Manage › Accounts*, where the **🔑 Link** button creates a single-use link (24 h) to pass on.
+- **E-mail** editable in *My account*.
+- **Usernames with spaces and accents** (e.g. “SMITH John”).
+- **Account details editable by the administrator** (✏️): username, callsign, e-mail.
+
 ## 1.5.8
 
 ### 📱 Phone and Android app
