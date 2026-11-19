@@ -94,3 +94,22 @@ A Meshtastic node only accepts one Wi-Fi client, and a MeshCore companion only o
 
 ## Which node to use for programming?
 The map's node must **hear the nodes to program well**. A badly placed node (hearing the network around −15 dB) will make many requests fail. For an intervention, the most effective is to link a node **close to the target**: in the car over Bluetooth, for example.
+
+## Member gateway (📡 Become a gateway)
+A logged-in member, even without admin rights, can connect **their own radio** to the map from their computer, with nothing to install: **Tools › 📡 Become a gateway…**, then **USB** or **Bluetooth** (Chrome or Edge, map served over **HTTPS**). Useful for an operator in the field, a member living in a coverage hole, or a club that wants to share its radios with the map.
+
+- The radio only **listens**: it adds what it hears to the map (with its own SNR/RSSI, like an MQTT gateway) but transmits nothing for the map. Sending messages and remote node administration still go through the main node, reserved to administrators.
+- Its name carries the member's username (e.g. “USB radio · Paul”): it can never take the place of another node.
+- **Two radios per account** at most, limited data rate (a normal radio stays far below).
+- Keep the tab open: relaying stops if the page closes or the PC goes to sleep.
+- The administrator sees each gateway in **Radio nodes** (“📡 gateway of Paul”) and can **cut it off**: it is then refused for 12 h.
+- Setting: **Advanced settings › Radio node › Member gateways** (yes by default, “no” to keep relaying for administrators only).
+
+> ⚠️ On a map served over plain **HTTP** (e.g. `http://my-server:8095`), browsers block USB and Bluetooth: you need an **HTTPS** address (Let's Encrypt certificate behind a reverse proxy, or a Tailscale …ts.net address).
+
+### Writing the community's channels to your radio
+Once the radio is connected, the **🎚️ Radio channels** panel shows its 8 slots and the map's **channel set**, defined by an administrator (✏️ Edit this set button).
+
+The member ticks the channels they want and clicks **Write to the radio**; the map writes them, then reads the radio back to check. If there is not enough room, the map asks which channels to **free** (nothing is removed unless ticked); kept channels stay grouped from slot 1 with their settings. Channel 0 (primary, which sets the frequency) is **never** touched. A warning appears when a ticked channel is **unencrypted** (public key): no personal data on it.
+
+**Keys never leave the server**: they are encrypted on disk (same master key as teams, `CLE_EQUIPES`), a page only ever sees the channel name, and whoever edits a set only sees a short fingerprint. For a private key, choose “new private key (random)” or paste the existing key (base64, 16 or 32 bytes).
