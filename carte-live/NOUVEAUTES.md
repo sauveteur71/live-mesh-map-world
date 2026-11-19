@@ -2,6 +2,11 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.11
+
+### 🌍 Feeding a world map
+- Documentation: how to listen to the official public Meshtastic broker **by region** (`msh/US`, `msh/EU_868`…; the “all topics” subscription is refused by that broker), several regions on the same broker with `MQTT_SUJETS_SUPPLEMENTAIRES`, volume and key advice, and the MeshCore community brokers (no single world broker). `.env.example` updated.
+
 ## 1.5.10
 
 ### 📡 Member gateways
