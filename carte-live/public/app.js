@@ -1873,10 +1873,13 @@ const CATALOGUE_REGLAGES = [
   ['Mettre à jour la carte', 'Version', 'mise à jour version upgrade docker image nouvelle', 'admin', () => ficheMaj()],
   ['Signalements (route inondée…)', 'Outils', 'signaler événement inondation alerte waypoint bipper germacrise', 'membre', () => ficheSignalements()],
 ];
+// Carte hors de France : zone d'étude = carré de 1° (MN40W075), pas de département
+const carteMondeClient = () => /^M[NS]\d{2}[EW]\d{3}$/.test(String(((etat.config || {}).departement || {}).code || ''));
 function indexReglages() {
   const r = etat.admin ? 3 : etat.gestion ? 2 : etat.membre ? 1 : 0;
   const niv = { admin: 3, gestion: 2, membre: 1 };
-  const l = CATALOGUE_REGLAGES.filter((e) => !e[3] || r >= niv[e[3]]).map(([t, ch, m, , go]) => ({ t, ch, m, go }));
+  const l = CATALOGUE_REGLAGES.filter((e) => !e[3] || r >= niv[e[3]]).map(([t, ch, m, , go]) => ({ t, ch, m, go }))
+    .map((e) => (carteMondeClient() && e.t === 'Télécharger toute la France (relief)' ? { ...e, t: 'Télécharger le relief de la zone (carrés voisins)' } : e));
   const cleT = (t) => sansAccent(t).replace(/^[^a-z0-9]+/, '').trim();
   const vus = new Set(l.map((e) => cleT(e.t)));
   const ajouter = (t, ch, m, go) => { t = String(t || '').replace(/\s+/g, ' ').trim(); if (!t || t.length < 2 || vus.has(cleT(t))) return; vus.add(cleT(t)); l.push({ t, ch, m, go }); };
@@ -6048,7 +6051,7 @@ function brancherInterface() {
       <h3>Archives</h3>${l.map((x) => `<div class="ligne"><span class="titre"><a href="/rapports/${encodeURIComponent(x)}" target="_blank" rel="noopener">Semaine du ${esc(x.slice(8, 18).split('-').reverse().join('/'))}</a></span></div>`).join('') || '<div class="vide">Pas encore d’archive (premier rapport lundi prochain vers 7 h).</div>'}`;
   };
   { const bc = $('#btn-chercher-reglage'); if (bc) bc.onclick = ouvrirRechercheReglages; }
-  { const bf = $('#outil-france'); if (bf) { bf.hidden = !etat.admin; bf.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheFrance(); }; } }
+  { const bf = $('#outil-france'); if (bf) { bf.hidden = !etat.admin; if (carteMondeClient()) { bf.textContent = '🗺️ Relief de la zone'; bf.title = 'Télécharger le relief de la zone de la carte et de ses carrés voisins (administrateur)'; } bf.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheFrance(); }; } }
   { const bs = $('#outil-signalements'); if (bs) bs.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; if (masquee('signalements')) ficheAlertesOff(); else ficheSignalements(); }; }
   { const bt = $('#outil-trafic'); if (bt) bt.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ficheTrafic(); }; }
   { const bc = $('#outil-connecter'); if (bc) bc.onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; ouvrirConnexion(); }; }

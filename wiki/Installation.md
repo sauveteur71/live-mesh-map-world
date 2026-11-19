@@ -133,6 +133,9 @@ Puis *Outils › Connecter un module › USB du serveur*. Voir [[Connecter un mo
 
 Le relief du département de la carte se télécharge tout seul. Pour les calculs de couverture dans tous les départements : *Outils › 🗺️ Toute la France › ⬇ Télécharger et installer toute la France* (aussi dans *Gestion › Réglages › Carte publique et relief*) (paquet de ≈ 110 Mo récupéré automatiquement sur GitHub). Voir [[Couverture et sites]].
 
+## Relief de la zone, hors de France (carte monde)
+Avec une zone du monde (un carré de 1° comme `MN40W075`), le relief (Copernicus, 30 m) du carré de la carte se télécharge tout seul. Pour préparer aussi les 8 carrés voisins et laisser les visiteurs calculer la couverture n'importe où dans le monde : *Outils › 🗺️ Relief de la zone › ⬇ Télécharger la zone et les carrés voisins* (aussi dans *Gérer › Réglages*). Comptez quelques minutes par carré ; la préparation continue si vous fermez la page, puis la carte publique passe en « n'importe où dans le monde ». Sans cela, le premier calcul sur un carré télécharge son relief à la demande.
+
 ## 5. Accès depuis l'extérieur et HTTPS
 
 Le plus simple et le plus sûr est **Tailscale** sur le serveur et vos appareils. Le Bluetooth et l'USB dans le navigateur exigent **HTTPS** et **Chrome ou Edge** :

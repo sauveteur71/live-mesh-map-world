@@ -63,7 +63,7 @@ const { creerSourceMeshMonitor } = require('./meshmonitor');
 const { creerSourceRadio } = require('./radio');
 const { creerAnalyse } = require('./analyse');
 const { creerRelief, contourDepartement } = require('./relief');
-const { estCodeMonde, codeMonde, nomMonde, lieuxMonde } = require('./monde');
+const { estCodeMonde, codeMonde, nomMonde, lieuxMonde, voisinsMonde } = require('./monde');
 const { creerComptes } = require('./comptes');
 const { creerAdministration } = require('./administration');
 const { creerAgents } = require('./agents');
@@ -441,15 +441,19 @@ async function importerPaquetFrance() {
     return noms.length;
   } finally { try { fs.unlinkSync(tmp); } catch { /* déjà */ } }
 }
+// Carte hors de France : pas de « France entière », mais la zone de la carte et ses 8 carrés voisins (relief Copernicus)
+const carteMonde = () => estCodeMonde(config.departement.code);
+const codesAPreparer = () => (carteMonde() ? voisinsMonde(String(config.departement.code).toUpperCase()) : listeDepartements.map((d) => d.code));
 async function prechargerFrance() {
   if (precharge.enCours) return;
-  const codes = listeDepartements.map((d) => d.code).filter((c) => c !== String(config.departement.code).toUpperCase());
+  const monde = carteMonde();
+  const codes = codesAPreparer().filter((c) => c !== String(config.departement.code).toUpperCase());
   // Gardé sur disque : après un redémarrage de la carte (mise à jour), la préparation reprend où elle en était
   reliefPublic.preparation = true; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
   Object.assign(precharge, { enCours: true, arret: false, total: codes.length, faits: 0, deja: 0, erreurs: [], courant: null, etape: null, aCompleter: [], debut: Date.now(), fin: null });
-  journal(`[Relief] préparation de toute la France : ${codes.length} départements`);
+  journal(monde ? `[Relief] préparation de la zone et de ses voisins : ${codes.length} carrés de 1°` : `[Relief] préparation de toute la France : ${codes.length} départements`);
   // D'abord le paquet « relief France » publié sur GitHub (un seul téléchargement), s'il manque des départements
-  if (codes.some((c) => !reliefSurDisque(c))) {
+  if (!monde && codes.some((c) => !reliefSurDisque(c))) {
     precharge.courant = 'paquet';
     try { const n = await importerPaquetFrance(); journal(`[Relief] paquet France : ${n} fichier(s) installé(s)`); } catch (e) { journal(`[Relief] paquet France indisponible (${e.message}) : téléchargement département par département`); if (!/HTTP 404/.test(e.message)) precharge.erreurs.push({ code: 'paquet', erreur: e.message }); }
   }
@@ -493,9 +497,9 @@ async function prechargerFrance() {
   if (!precharge.arret && reliefPublic.activerFrance) {
     reliefPublic.couverture = 'france'; reliefPublic.activerFrance = false;
     try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ }
-    journal('[Relief] toute la France prête : la carte publique calcule maintenant dans tous les départements');
+    journal(monde ? '[Relief] zone et voisins prêts : la carte publique calcule maintenant n’importe où dans le monde' : '[Relief] toute la France prête : la carte publique calcule maintenant dans tous les départements');
   }
-  journal(`[Relief] préparation de la France ${precharge.arret ? 'arrêtée' : 'terminée'} : ${precharge.faits}/${precharge.total} (${precharge.erreurs.length} erreur(s))`);
+  journal(monde ? `[Relief] préparation de la zone ${precharge.arret ? 'arrêtée' : 'terminée'} : ${precharge.faits}/${precharge.total} (${precharge.erreurs.length} erreur(s))` : `[Relief] préparation de la France ${precharge.arret ? 'arrêtée' : 'terminée'} : ${precharge.faits}/${precharge.total} (${precharge.erreurs.length} erreur(s))`);
   Object.assign(precharge, { enCours: false, courant: null, fin: Date.now() });
   if (!redemarrageEnCours) { reliefPublic.preparation = false; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }
 }
@@ -587,8 +591,9 @@ const messageChargement = (RR) => (RR.code && reliefSurDisque(RR.code)
   : `Relief de la zone ${RR.code || ''} en cours de chargement (${estCodeMonde(RR.code) ? 'Copernicus' : 'IGN'}) : réessayez dans quelques minutes`);
 app.get('/api/relief/france', (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
-  const surDisque = listeDepartements.filter((d) => d.code === String(config.departement.code).toUpperCase() || reliefSurDisque(d.code)).length;
-  res.set('Cache-Control', 'no-store').json({ couverture: reliefPublic.couverture, surDisque, total: listeDepartements.length, precharge: { ...precharge, instance: undefined } });
+  const liste = codesAPreparer();
+  const surDisque = liste.filter((c) => c === String(config.departement.code).toUpperCase() || reliefSurDisque(c)).length;
+  res.set('Cache-Control', 'no-store').json({ monde: carteMonde(), couverture: reliefPublic.couverture, surDisque, total: liste.length, precharge: { ...precharge, instance: undefined } });
 });
 app.get('/api/relief/france/paquet', (req, res) => {
   if (!estAdmin(req)) return res.status(401).json({ erreur: 'Connexion admin requise' });
@@ -602,7 +607,7 @@ app.post('/api/relief/france', (req, res) => {
     if (!['departement', 'france'].includes(b.couverture)) return res.status(400).json({ erreur: 'choix invalide' });
     reliefPublic.couverture = b.couverture;
     try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch (e) { return res.status(500).json({ erreur: e.message }); }
-    journal(`[Relief] couverture de la carte publique : ${b.couverture === 'france' ? 'toute la France' : 'département de la carte'} (${utilisateur(req).identifiant})`);
+    journal(`[Relief] couverture de la carte publique : ${b.couverture === 'france' ? (carteMonde() ? 'n’importe où dans le monde' : 'toute la France') : (carteMonde() ? 'zone de la carte' : 'département de la carte')} (${utilisateur(req).identifiant})`);
   }
   if (b.precharger === true) {
     if (b.activer) { reliefPublic.activerFrance = true; try { ecrireSur(fReliefPublic, JSON.stringify(reliefPublic)); } catch { /* lecture seule */ } }

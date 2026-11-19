@@ -1031,6 +1031,17 @@ async function rendreFrance() {
   try { r = await api('/api/relief/france'); } catch (e) { z.innerHTML = `<div class="vide">${esc(e.message)}</div>`; return; }
   const p = r.precharge;
   const duree = p.debut ? Math.round(((p.fin || Date.now()) - p.debut) / 60000) : 0;
+  const progres = p.enCours ? `<div class="alerte info-lecture"><span class="sablier"></span> Préparation en cours : ${p.faits}/${p.total} carrés · ${p.courant ? 'carré ' + esc(p.courant) : ''}${p.etape ? ' : ' + esc(p.etape) : ''} · ${duree} min. Elle continue même si vous fermez cette page.</div>` : p.fin ? `<p class="note">Dernière préparation : ${p.faits}/${p.total} carrés en ${duree} min${p.erreurs.length ? `, ${p.erreurs.length} erreur(s) : ${p.erreurs.slice(0, 5).map((x) => esc(x.code + ' ' + x.erreur)).join(' ; ')}` : ''}.</p>` : '';
+  if (r.monde) {
+    z.innerHTML = `<h3>🗺️ Relief de la carte</h3>
+    <label>Calculs de couverture de la carte publique <select id="fr-couv">
+      <option value="departement" ${r.couverture === 'departement' ? 'selected' : ''}>Zone de la carte seulement (léger)</option>
+      <option value="france" ${r.couverture === 'france' ? 'selected' : ''}>N’importe où dans le monde (relief chargé à la demande)</option></select></label>
+    <p class="note">Avec « n’importe où dans le monde », chaque visiteur peut calculer la couverture, les emplacements de relais et la couverture d’un point sur n’importe quel carré de 1°. Le premier calcul d’un carré télécharge son relief Copernicus (30 m) et ses points hauts (quelques minutes), sauf s’il a été préparé ci-dessous.</p>
+    <div class="actions-prop">${p.enCours ? '<button class="mini" id="fr-stop">⏹ Arrêter la préparation</button>' : '<button class="mini principal" id="fr-go" title="Télécharge le relief de la zone de la carte et de ses 8 carrés voisins ; la carte publique passe ensuite d’elle-même en « n’importe où dans le monde »">⬇ Télécharger la zone et les carrés voisins</button>'}<span class="note">Relief prêt sur le serveur : <b>${r.surDisque}</b> / ${r.total} carrés</span></div>
+    ${progres}
+    <p class="note">La préparation télécharge le relief Copernicus (30 m), les points hauts, les voies d’accès et les sites (OpenStreetMap) de la zone de la carte et de ses 8 carrés voisins (3 × 3 carrés de 1°). Comptez quelques minutes par carré. Les carrés déjà prêts sont sautés. Pour une autre zone, changez la zone de la carte dans Gérer › Réglages.</p>`;
+  } else
   z.innerHTML = `<h3>🗺️ Carte publique et relief</h3>
     <label>Calculs de couverture de la carte publique <select id="fr-couv">
       <option value="departement" ${r.couverture === 'departement' ? 'selected' : ''}>Département de la carte seulement (léger)</option>

@@ -135,6 +135,9 @@ Then *Tools › Connect a node › Server USB*. See [[Connect a node|Connecter u
 
 The terrain of the map's department downloads by itself. For coverage computations in all departments: *Tools › 🗺️ Whole of France › ⬇ Download and install the whole of France* (also in *Manage › Settings › Public map and terrain*) (≈ 110 MB package fetched automatically from GitHub). See [[Coverage and sites|Couverture et sites]].
 
+## Terrain of the area, outside France (world map)
+With a world zone (a 1° square such as `MN40W075`), the terrain (Copernicus, 30 m) of the map's square downloads by itself. To prepare the 8 neighbouring squares too and let visitors compute coverage anywhere in the world: *Tools › 🗺️ Area terrain › ⬇ Download the area and neighbouring squares* (also in *Manage › Settings*). It takes a few minutes per square and continues if you close the page; when it is done the public map switches to “anywhere in the world”. Without it, the first calculation on a square downloads that square's terrain on demand.
+
 ## 5. Access from outside and HTTPS
 
 The simplest and safest is **Tailscale** on the server and your devices. Bluetooth and USB in the browser require **HTTPS** and **Chrome or Edge**:

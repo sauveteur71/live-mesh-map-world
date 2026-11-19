@@ -107,4 +107,16 @@ async function lieuxMonde(code) {
   throw new Error('OpenStreetMap (Overpass) : ' + (derniere ? derniere.message : 'indisponible'));
 }
 
-module.exports = { lieuxMonde, MARGE_MONDE, estCodeMonde, codeMonde, rectangleMonde, contourMonde, nomMonde, grilleCopernicus };
+// Le carré et ses 8 voisins (3 × 3 carrés de 1°) : de quoi couvrir la zone de la carte et ses alentours
+function voisinsMonde(code) {
+  const r = rectangleMonde(code);
+  if (!r) return [];
+  const l = [];
+  for (let dLat = -1; dLat <= 1; dLat++) for (let dLon = -1; dLon <= 1; dLon++) {
+    const la = r[0] + dLat, lo = r[1] + dLon;
+    if (la < -90 || la > 89) continue;
+    l.push(codeMonde(la + 0.5, ((lo + 180 + 360) % 360) - 180 + 0.5));
+  }
+  return l;
+}
+module.exports = { voisinsMonde, lieuxMonde, MARGE_MONDE, estCodeMonde, codeMonde, rectangleMonde, contourMonde, nomMonde, grilleCopernicus };

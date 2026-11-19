@@ -593,3 +593,13 @@ test('Jeux de canaux : placement sur la radio (ajout, déjà présent, place à 
   assert.ok(r.ops.every((o) => o.index >= 1 && o.index <= 7));
   assert.deepEqual(r.final.map((c) => c.nom), ['C1', 'C3', 'C4', 'C6', 'C7', 'ADRASEC43', 'Alerte']);
 });
+
+test('Relief monde : le carré de la carte et ses 8 voisins (3 × 3), y compris autour du méridien 180', () => {
+  const { voisinsMonde } = require('../src/monde');
+  const v = voisinsMonde('MN40W075');
+  assert.equal(v.length, 9);
+  assert.ok(v.includes('MN40W075') && v.includes('MN39W076') && v.includes('MN41W074'));
+  const w = voisinsMonde('MN40W180');
+  assert.ok(w.includes('MN40E179') && w.includes('MN40W179'));
+  assert.deepEqual(voisinsMonde('MN2A43'), []);
+});
