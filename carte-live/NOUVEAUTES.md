@@ -2,6 +2,12 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.12
+
+### 🗺️ Terrain of the area (world map)
+- On a map outside France, the “whole of France” block (96 departments, IGN terrain) is replaced by **Tools › 🗺️ Area terrain**: one button, **⬇ Download the area and neighbouring squares**, prepares the Copernicus terrain (30 m), high points and access roads of the map's 1° square and its 8 neighbours (3 × 3 squares), with a “x / 9 squares” counter. It goes on if you close the page; the public map then switches by itself to **anywhere in the world** (each square is otherwise loaded on demand). Choice “Map area only” / “Anywhere in the world” in the same block.
+- Buttons, search and menus say “Area terrain” instead of “Whole of France”; translations in 8 languages; wiki updated. The French edition is unchanged.
+
 ## 1.5.11
 
 ### 🌍 Feeding a world map
