@@ -1685,3 +1685,11 @@ body.theme-clair .lorawan-etiquette { background: #ffffffee; color: #5a2ea6; }
 .invite-info { color: var(--doux); font-size: 12px; margin-top: 2px; }
 .invite-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 label.bouton-fichier { cursor: pointer; display: inline-flex; align-items: center; }
+
+/* Mot de passe oublié */
+.lien-discret { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 6px 0; min-height: 0; cursor: pointer; font-weight: 600; }
+.lien-mdp { margin-bottom: 10px; }
+.lien-mdp .ligne-lien { display: flex; gap: 8px; margin-top: 6px; }
+.lien-mdp .ligne-lien input { flex: 1; min-width: 0; }
+#pan-comptes td input.fiche-ident, #pan-comptes td input.fiche-email, #pan-comptes td input.fiche-ind { display: block; width: 100%; min-width: 130px; margin: 2px 0; }
+#pan-comptes .actions-fiche { display: flex; gap: 4px; margin-top: 4px; }

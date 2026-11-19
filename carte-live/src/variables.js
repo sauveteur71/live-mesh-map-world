@@ -87,6 +87,14 @@ const CATALOGUE = [
   { nom: 'POSTGRES_URL', groupe: 'Services', libelle: 'Archive PostgreSQL', type: 'secret', aide: 'postgres://utilisateur:motdepasse@serveur:5432/base' },
   { nom: 'METEOALARM_URL', groupe: 'Services', libelle: 'Flux de vigilance MeteoAlarm', type: 'texte', aide: 'Flux des vigilances météo affichées dans les alertes. Vide = flux MeteoAlarm de la France.' },
   { nom: 'RELIEF_FRANCE_URL', groupe: 'Services', libelle: 'Adresse du paquet « relief France »', type: 'texte', aide: 'Adresse de téléchargement du relief de toute la France (calcul de couverture hors ligne). Vide = adresse fournie par le projet.' },
+  // E-mail : récupération du mot de passe oublié
+  { nom: 'CARTE_ADRESSE', groupe: 'E-mail', libelle: 'Adresse publique de la carte', type: 'texte', aide: 'Ex. https://carte.mon-club.fr — sert à construire le lien envoyé par e-mail pour un mot de passe oublié. Vide = pas d’e-mail : les demandes vont aux administrateurs.' },
+  { nom: 'SMTP_HOTE', groupe: 'E-mail', libelle: 'Serveur d’envoi (SMTP)', type: 'texte', aide: 'Ex. smtp.gmail.com, smtp.orange.fr, ssl0.ovh.net. Vide = pas d’e-mail : les demandes de mot de passe oublié vont aux administrateurs.' },
+  { nom: 'SMTP_PORT', groupe: 'E-mail', libelle: 'Port SMTP', type: 'nombre', min: 1, max: 65535, defaut: 587, aide: '587 (STARTTLS) le plus souvent, ou 465 (SSL). Par défaut 587.' },
+  { nom: 'SMTP_SECURISE', groupe: 'E-mail', libelle: 'Connexion SSL directe', type: 'choix', choix: OUI_NON, aide: 'Oui pour le port 465. Par défaut : oui sur 465, STARTTLS sinon.' },
+  { nom: 'SMTP_UTILISATEUR', groupe: 'E-mail', libelle: 'Compte SMTP', type: 'texte', aide: 'Souvent l’adresse e-mail d’envoi.' },
+  { nom: 'SMTP_MOT_DE_PASSE', groupe: 'E-mail', libelle: 'Mot de passe SMTP', type: 'secret', aide: 'Enregistré comme secret, jamais réaffiché. Gmail : créez un « mot de passe d’application ».' },
+  { nom: 'SMTP_EXPEDITEUR', groupe: 'E-mail', libelle: 'Expéditeur', type: 'texte', aide: 'Ex. « Carte live <carte@mon-club.fr> ». Vide = le compte SMTP.' },
   { nom: 'LANGUE', groupe: 'Services', libelle: 'Langue du journal du serveur', type: 'choix', choix: [['', '(par défaut)'], ['fr', 'français'], ['en', 'anglais']], aide: 'Langue des messages du journal du serveur et des alertes envoyées (domotique, radio). L’interface suit la langue de chaque visiteur.' },
 ];
 const PAR_NOM = new Map(CATALOGUE.map((v) => [v.nom, v]));
