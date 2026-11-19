@@ -182,7 +182,8 @@ function chargerAdministration() {
   if (!chargementAdministration) {
     chargementAdministration = new Promise((ok, ko) => {
       const s = document.createElement('script');
-      s.src = '/administration.js';
+      const v = (/[?&]v=([\w.-]+)/.exec((document.querySelector('script[src*="/app.js"]') || {}).src || '') || [])[1];
+      s.src = '/administration.js' + (v ? '?v=' + v : '?t=' + Date.now()); // versionné : jamais l'ancien après une mise à jour
       s.onload = ok;
       s.onerror = () => { chargementAdministration = null; ko(new Error('Écran indisponible : vérifiez la connexion à la carte')); };
       document.head.appendChild(s);
@@ -211,7 +212,8 @@ function rendreSauvegardes(...a) { return administration('rendreSauvegardes', a)
 function rendreJournal(...a) { return administration('rendreJournal', a); }
 function rendreComptes(...a) { return administration('rendreComptes', a); }
 function rendreReglages(...a) { return administration('rendreReglages', a); }
-for (const n of ['ficheRegistreRelais', 'ficheAutresPresets', 'ouvrirBroker', 'ouvrirPasserelle', 'ficheMaj', 'editeurReglages', 'ficheFrance', 'ficheModeles', 'ficheV28', 'formulaireAction', 'rapportVerif', 'rendreSauvegardes', 'rendreJournal', 'rendreComptes', 'rendreReglages']) window[n].relais = true;
+function rendreFrequentation(...a) { return administration('rendreFrequentation', a); }
+for (const n of ['rendreFrequentation', 'ficheRegistreRelais', 'ficheAutresPresets', 'ouvrirBroker', 'ouvrirPasserelle', 'ficheMaj', 'editeurReglages', 'ficheFrance', 'ficheModeles', 'ficheV28', 'formulaireAction', 'rapportVerif', 'rendreSauvegardes', 'rendreJournal', 'rendreComptes', 'rendreReglages']) window[n].relais = true;
 
 // ---- Carte -----------------------------------------------------------------
 let carte;
@@ -6106,6 +6108,7 @@ function ongletsDialogue(dlg) {
     dlg.querySelectorAll('[data-pan]').forEach((p) => (p.hidden = p.dataset.pan !== b.dataset.dlg));
     if (b.dataset.dlg === 'comptes') rendreComptes();
     if (b.dataset.dlg === 'journal') rendreJournal();
+    if (b.dataset.dlg === 'frequentation') rendreFrequentation();
     if (b.dataset.dlg === 'sauvegardes') rendreSauvegardes();
     if (b.dataset.dlg === 'archive') rendreArchive();
     if (b.dataset.dlg === 'reglages') rendreReglages();

@@ -86,6 +86,8 @@ const CATALOGUE = [
   { nom: 'LSASAF_MOT_DE_PASSE', groupe: 'Services', libelle: 'Mot de passe LSA SAF', type: 'secret', aide: 'Mot de passe de ce compte. Enregistré comme secret.' },
   { nom: 'POSTGRES_URL', groupe: 'Services', libelle: 'Archive PostgreSQL', type: 'secret', aide: 'postgres://utilisateur:motdepasse@serveur:5432/base' },
   { nom: 'METEOALARM_URL', groupe: 'Services', libelle: 'Flux de vigilance MeteoAlarm', type: 'texte', aide: 'Flux des vigilances météo affichées dans les alertes. Vide = flux MeteoAlarm de la France.' },
+  { nom: 'STATS_FREQUENTATION', groupe: 'Services', libelle: 'Statistiques de fréquentation', type: 'choix', choix: OUI_NON, aide: 'Compte les pages ouvertes et les visiteurs par jour (Gérer › Fréquentation). Aucune adresse IP n’est gardée, pas de cookie. Par défaut : oui.' },
+  { nom: 'STATS_PAYS', groupe: 'Services', libelle: 'Pays des visiteurs', type: 'choix', choix: OUI_NON, aide: 'Retrouve le pays de chaque visiteur avec la base libre DB-IP, téléchargée une fois par mois sur le serveur (8 Mo) et consultée sur place. Par défaut : oui.' },
   { nom: 'RELIEF_FRANCE_URL', groupe: 'Services', libelle: 'Adresse du paquet « relief France »', type: 'texte', aide: 'Adresse de téléchargement du relief de toute la France (calcul de couverture hors ligne). Vide = adresse fournie par le projet.' },
   // E-mail : récupération du mot de passe oublié
   { nom: 'CARTE_ADRESSE', groupe: 'E-mail', libelle: 'Adresse publique de la carte', type: 'texte', aide: 'Ex. https://carte.mon-club.fr — sert à construire le lien envoyé par e-mail pour un mot de passe oublié. Vide = pas d’e-mail : les demandes vont aux administrateurs.' },
