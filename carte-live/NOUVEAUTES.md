@@ -2,6 +2,24 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.10
+
+### 📡 Member gateways
+- **Tools › 📡 Become a gateway**: a logged-in member (not only the administrator) connects **their own** Meshtastic or MeshCore radio from the browser, over USB or Bluetooth, with nothing to install. It adds what it hears to the map, **listening only**: it never transmits and never replaces the main node.
+- Named after the member's account, **two radios per account**, rate-limited; the administrator sees each gateway in *Radio nodes* and can **cut it off** (then refused for 12 h). Setting *Radio node › Member gateways*.
+- USB and Bluetooth require the map over **HTTPS**.
+
+### 🎚️ Channel set
+- The administrator defines the map's channels; a member who connected their radio sees its 8 slots, ticks channels and clicks **Write to the radio**: written, then read back to check. Not enough room: they choose which channels to free; channel 0 is never touched; warning for unencrypted channels.
+- **Keys never leave the server** (encrypted, short fingerprint for whoever edits the set).
+
+### 📊 Traffic (Manage › Traffic)
+- Visitors online, visitors and pages per day, **countries** (free DB-IP database looked up on the server), pages, **sources** (Facebook, rtl-sdr.com…).
+- **No IP address kept, no cookie**, robots ignored; settings `STATS_FREQUENTATION` and `STATS_PAYS`.
+
+### 🛠️ Fixes
+- *Manage › Accounts*: clearly visible **✔ Save** button, Enter saves, all open rows saved at once.
+
 ## 1.5.9
 
 ### 🔑 Accounts
