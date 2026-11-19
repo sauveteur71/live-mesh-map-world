@@ -6,6 +6,17 @@ La carte s'abonne à `MQTT_RACINE/#` (par défaut `msh/EU_868`) et, pour MeshCor
 - Le compte MQTT de la carte doit pouvoir **lire** `msh/#` et **lire et écrire** `meshcore/#`.
 - Un exemple de broker Mosquitto (TLS, comptes, droits) est fourni dans le dossier `mosquitto/` du dépôt.
 
+## Carte monde : le broker public de Meshtastic
+Pour alimenter une carte hors de votre propre réseau, vous pouvez écouter le broker public officiel de Meshtastic (`mqtt.meshtastic.org`, port 1883, ou 8883 en TLS). L'adresse, l'identifiant et le mot de passe du serveur public sont donnés dans la [documentation MQTT de Meshtastic](https://meshtastic.org/docs/software/mqtt/) : saisissez-les dans l'assistant ou dans *Gestion › Réglages* (ils ne sont pas dans le dépôt).
+- **Une racine par région, jamais `msh/#`.** Depuis août 2024, le broker public n'accepte plus l'abonnement à « tous les sujets » ([annonce](https://meshtastic.org/blog/recent-public-mqtt-broker-changes/)). Abonnez-vous à la région voulue : `msh/US`, `msh/EU_868`, `msh/ANZ`… La principale se règle dans `MQTT_RACINE`, les autres, sur le **même** broker, dans `MQTT_SUJETS_SUPPLEMENTAIRES` (séparées par des virgules, par exemple `msh/CA/#,msh/EU_868/#`).
+- **Volume** : une région entière représente beaucoup de trafic. Commencez par une seule, surveillez le processeur et la taille de la base, et raccourcissez la durée de conservation au besoin (un Raspberry Pi ou un NAS peut ne pas suivre avec plusieurs régions).
+- **Clé** : `CANAUX=LongFast=AQ==` (clé publique par défaut) est nécessaire pour lire les positions et les noms des nœuds.
+- **Positions floutées** : avec la clé par défaut, le broker public ne transmet que des positions à précision réduite. La carte les affiche telles quelles.
+- Un même paquet peut arriver de plusieurs passerelles : la carte supprime les doublons.
+
+## MeshCore : pas de broker mondial unique
+Contrairement à Meshtastic, MeshCore n'a pas de broker public central. Chaque communauté publie (avec *meshcoretomqtt*) sur son propre broker. Pour voir plusieurs régions, ajoutez le broker de chaque communauté avec `MQTT_BROKERS_SUPPLEMENTAIRES` (`mqtts://utilisateur:motdepasse@hôte:8883|meshcore`, 5 au plus ; l'identifiant et le mot de passe sont donnés par la communauté qui gère le broker). Les paquets reçus deux fois par deux brokers sont ignorés.
+
 ## Les canaux Meshtastic
 Pour lire positions, messages et télémétrie, la carte doit connaître la clé de chaque canal : *Gestion › Réglages*, ou `CANAUX` dans `.env`.
 - Format : `NomDuCanal=cléBase64`, séparés par `;`.
