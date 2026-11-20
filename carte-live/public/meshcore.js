@@ -261,11 +261,38 @@ function mcMajKpis() {
   set('#k-mc-obs', s ? `${s.observateursEnLigne}/${s.observateurs}` : '–');
   set('#k-mc-liens', s ? s.liens : '–');
   set('#k-mc-debit', s ? fmt(s.paquetsMinute, 1) : '–');
+  mcMajSansSource();
+}
+
+// ---- Aucune source MeshCore : explication claire plutôt que des compteurs vides --------------------
+// MeshCore n'a pas de serveur public mondial : tant qu'aucun courtier ni companion n'envoie de paquet, la carte le dit
+// et (pour l'administrateur) montre comment en brancher une.
+function mcSansSource() {
+  const s = mc.etat && mc.etat.stats;
+  return !!s && !s.observateurs && !s.liens && !mc.noeuds.size && !Number(s.paquetsMinute);
+}
+function mcMajSansSource() {
+  const z = $('#mc-sans-source');
+  if (!z) return;
+  const visible = mcSansSource() && !['gestion', 'companion'].includes(mc.vue);
+  z.hidden = !visible;
+  if (!visible) { z.innerHTML = ''; return; }
+  z.innerHTML = `<h4>Aucune source MeshCore pour l’instant</h4>
+    <p>Cette carte n’a encore reçu aucun paquet MeshCore, donc rien à afficher. MeshCore n’a pas de serveur public mondial : il faut lui brancher une source.</p>
+    ${etat.admin ? `<ol>
+      <li><b>Utiliser le serveur d’une communauté</b><span>Demandez à un groupe MeshCore de votre région l’adresse, l’identifiant et le mot de passe de son serveur MQTT, puis ajoutez-les dans Réglages, rubrique « Brokers supplémentaires ».</span></li>
+      <li><b>Installer une radio observatrice chez vous</b><span>Une radio MeshCore et le logiciel meshcoretomqtt envoient ce qu’elle entend vers votre propre serveur MQTT, à ajouter de la même façon.</span></li>
+      <li><b>Ne rien brancher</b><span>La carte reste utilisable avec Meshtastic seul : choisissez « Meshtastic » en haut du panneau.</span></li>
+    </ol>
+    <button type="button" class="principal" id="mc-ouvrir-reglages">Ouvrir les réglages MQTT</button>` : '<p>L’administrateur de la carte peut en brancher une dans les réglages.</p>'}`;
+  const b = $('#mc-ouvrir-reglages');
+  if (b) b.onclick = () => { const o = document.querySelector('.onglets button[data-onglet="reglages"]'); if (o) o.click(); };
 }
 
 // ---- Panneau MeshCore ---------------------------------------------------------------------------
 function mcRendrePanneau() {
   document.querySelectorAll('.sous-onglets-mc button').forEach((b) => b.classList.toggle('actif', b.dataset.mcVue === mc.vue));
+  mcMajSansSource();
   const z = $('#mc-contenu');
   if (!z) return;
   if (mc.vue === 'noeuds') mcRendreNoeuds();
@@ -1298,7 +1325,7 @@ function mcRendreCompanion() {
         <label>Code de zone (IATA) <input name="iata" value="${esc(e.reglages.iata)}" maxlength="8"><small>LPY = Le Puy</small></label>
         <label>Racine des sujets <input name="racine" value="${esc(e.reglages.racine)}"></label>
         <label class="case"><input type="checkbox" name="republier" ${e.reglages.republier ? 'checked' : ''}> Republier les paquets du companion</label>
-        <label>Paquets conservés <select name="perimetre">${[['departement', 'captés dans le département'], ['voisins', 'captés dans le département et ses voisins'], ['national', 'tout le flux national (lourd)']].map(([v, t]) => `<option value="${v}" ${e.reglages.perimetre === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>${e.reglages.horsPerimetre ? `${e.reglages.horsPerimetre} paquets ignorés depuis le démarrage` : 'selon la position de l’observateur qui les capte'}</small></label>
+        <label>Paquets conservés <select name="perimetre">${[['departement', 'captés dans la zone de la carte'], ['voisins', 'captés dans la zone et autour'], ['national', 'tout le flux reçu (lourd)']].map(([v, t]) => `<option value="${v}" ${e.reglages.perimetre === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>${e.reglages.horsPerimetre ? `${e.reglages.horsPerimetre} paquets ignorés depuis le démarrage` : 'selon la position de l’observateur qui les capte'}</small></label>
         <label>Liaisons déduites des chemins <select name="liensOctetsMin">${[[1, 'tous les chemins (1 octet compris)'], [2, 'chemins en 2 octets ou plus'], [3, 'chemins en 3 octets seulement']].map(([v, t]) => `<option value="${v}" ${Number(e.reglages.liensOctetsMin || 2) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>à 1 octet, deux répéteurs peuvent avoir le même préfixe : liaisons parfois fausses</small></label>
         <label>Codes de zone voisins <input name="iataVoisins" value="${esc(e.reglages.iataVoisins || '')}" placeholder="ex. CFE, LYS, EBU"><small>pour les observateurs sans position connue</small></label>
         <label>Relevé automatique de l’état des répéteurs <select name="supervisionHeures">${[[0, 'jamais'], [1, 'toutes les heures'], [3, 'toutes les 3 h'], [6, 'toutes les 6 h'], [12, 'toutes les 12 h'], [24, 'une fois par jour']].map(([v, t]) => `<option value="${v}" ${Number(e.reglages.supervisionHeures ?? 3) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>par le companion, sans rien cocher (lignes « 🤖 automatique » de Programmer)</small></label>

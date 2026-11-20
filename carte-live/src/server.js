@@ -2207,8 +2207,12 @@ function preparerReglages(b, existants = {}) {
       const lignes = b.mqtt.brokers.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
       if (lignes.length > 5) throw new Error('5 brokers supplémentaires au plus');
       m.brokers = lignes.map((l) => {
-        const [u, racine] = l.split('|').map((x) => (x || '').trim());
-        if (!/^(mqtts?|wss?):\/\/[^\s]+$/.test(u)) throw new Error(`Broker « ${masquerUrl(u)} » : adresse mqtt://, mqtts://, ws:// ou wss:// attendue`);
+        const [brut, racine] = l.split('|').map((x) => (x || '').trim());
+        // « serveur:8883 » ou « nom:mdp@serveur » sans début : on ajoute mqtts://
+        const u = /^[a-z][a-z0-9+.-]*:\/\//i.test(brut) || /\s/.test(brut) || !brut ? brut : 'mqtts://' + brut;
+        // Les serveurs LetsMesh n'ouvrent la lecture qu'avec un jeton signé par une radio MeshCore : la carte ne sait pas en fournir
+        if (/(^|[.@/])letsmesh\.net(:|\/|$)/i.test(u)) throw new Error(`Broker « ${masquerUrl(u)} » : ce serveur exige un jeton signé par une radio MeshCore (pas d’identifiant ni de mot de passe), il ne peut pas être branché ici`);
+        if (!/^(mqtts?|wss?):\/\/[^\s]+$/.test(u)) throw new Error(`Broker « ${masquerUrl(u)} » : adresse attendue, par exemple mqtts://nom:motdepasse@serveur:8883 (ou mqtt://, ws://, wss://)`);
         let url = u;
         const masque = u.match(/^([a-z]+:\/\/)([^:@/]*):\*\*\*@(.+)$/i);
         if (masque) {

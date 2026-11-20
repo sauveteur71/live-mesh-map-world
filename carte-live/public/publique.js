@@ -380,6 +380,8 @@ function dessinerMc() {
   mcp.coucheNoeuds.clearLayers(); mcp.coucheLiens.clearLayers();
   mcp.marqueurs = new Map();
   const vis = [...mcp.noeuds.values()].filter((n) => n.statut !== 'inactif');
+  // Aucun nœud MeshCore reçu (pas de source branchée) : on cache ces compteurs plutôt que d'afficher des « – » sans sens
+  document.querySelectorAll('.chiffres .mc').forEach((e) => { e.style.display = mcp.noeuds.size ? '' : 'none'; });
   document.getElementById('n-mc-rep').textContent = vis.filter((n) => ROLES_MC_RELAIS.has(n.role)).length;
   document.getElementById('n-mc-actifs').textContent = vis.filter((n) => n.statut === 'actif').length;
   if (!voitMc()) return;

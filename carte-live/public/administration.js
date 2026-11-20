@@ -744,6 +744,9 @@ async function ouvrirBroker() {
         <label style="grid-column: 1 / -1">Brokers supplémentaires écoutés en même temps (5 au plus, un par ligne) <textarea name="brokers" rows="3" spellcheck="false" autocomplete="off" placeholder="mqtts://nom:motdepasse@broker-voisin:8883|msh/EU_868">${esc(m.brokersReglage || '')}</textarea></label>
       </div>
       <p class="note">Brokers supplémentaires : une ligne par broker, « adresse » ou « adresse|racine » (racine vide = celle du broker principal). Chacun est écouté pour Meshtastic et pour MeshCore ; un paquet reçu par plusieurs brokers n’est compté qu’une fois. Identifiant et mot de passe dans l’adresse ; un mot de passe affiché <span class="mono">***</span> reste celui déjà enregistré. Ligne effacée = broker retiré.</p>
+      <p class="note"><b>Pour voir des nœuds MeshCore</b></p>
+      <p class="note">MeshCore n’a pas de serveur public mondial. Ajoutez ici le serveur MQTT d’une communauté de votre région (elle vous donne l’adresse, l’identifiant et le mot de passe). Les serveurs LetsMesh exigent un jeton signé par une radio MeshCore : ils ne conviennent pas.</p>
+      <p class="note">Exemple : <span class="mono">mqtts://nom:motdepasse@serveur:8883|meshcore</span></p>
       <div class="actions-prop"><button type="button" id="broker-tester">🔌 Tester ces réglages (10 s)</button><button type="submit" class="principal">Enregistrer et redémarrer</button></div>
       <div id="broker-test"></div>
       <p class="note">Le test se connecte avec ces réglages <b>sans toucher</b> à la connexion actuelle, s’abonne à la racine et compte les messages reçus pendant 10 s. Mot de passe vide = celui déjà enregistré.</p>
