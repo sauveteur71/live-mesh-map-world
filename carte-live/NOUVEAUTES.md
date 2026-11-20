@@ -2,6 +2,13 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.5.14
+
+### 🔧 Fixes
+- **One-click update**: if the Docker engine is slow to answer when the old version is stopped, the update now follows the container's real state instead of giving up, and **puts the old version back** if any step fails (the map is no longer left stopped). If the update service itself is interrupted halfway, it restarts the map when it comes back.
+- **MQTT root topic**: a root typed with a trailing `/#` is corrected (the map adds `/#` itself; `…/#/#` was refused by the broker and no packet arrived).
+- *Manage › Backups*: each backup now shows its **full date and time** (the name was cut off as “2..”).
+
 ## 1.5.13
 
 ### 🔧 Fixes
