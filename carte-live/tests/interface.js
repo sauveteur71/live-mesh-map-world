@@ -1117,8 +1117,9 @@ async function essaiPagesPubliques(navig) {
     code = 1;
   } finally {
     if (navigateur) await navigateur.close().catch(() => {});
-    if (serveur) serveur.kill();
-    fs.rmSync(donnees, { recursive: true, force: true });
+    // Attendre la fin réelle du serveur : il peut encore écrire (relief, donateurs…) pendant la suppression du dossier
+    if (serveur) { const fin = new Promise((r) => { serveur.once('exit', r); setTimeout(r, 5000); }); serveur.kill(); await fin; }
+    try { fs.rmSync(donnees, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch (e) { console.error('Dossier d’essai non supprimé :', e.message); }
     process.exit(code);
   }
 })();
