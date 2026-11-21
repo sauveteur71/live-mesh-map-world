@@ -12,7 +12,7 @@ The section of each version is copied as is into the GitHub release notes.
 - The former team “safety zone” (circle) becomes a sector automatically. Sectors, their alerts and team help requests are no longer sent to the public view.
 
 ### 🚨 Emergency mode
-- *Tools › 🚨 Emergency mode* (manager or administrator), inspired by MeshWave's emergency mode: **red banner** and red frame for every connected account, **simplified high-contrast map** (ordinary network in the background, responders, help requests and sectors in front), **crisis board** (help requests, sector alerts, responders, critical alerts), network status every 10 s, reports and incident log brought back if they were hidden.
+- *Tools › 🚨 Emergency mode* (turned on and off by an administrator; managers read the crisis board and add notes), inspired by MeshWave's emergency mode: **red banner** and red frame for every connected account, **simplified high-contrast map** (ordinary network in the background, responders, help requests and sectors in front), **crisis board** (help requests, sector alerts, responders, critical alerts), network status every 10 s, reports and incident log brought back if they were hidden.
 - **Time-stamped crisis log**: start, help requests, distress messages heard on the channels (SOS, MAYDAY, 🔔…), sector events, new critical alerts, hand-written notes, end; **CSV export**, the 10 previous crises are kept. Survives a restart.
 - No radio setting is changed and no LoRa message is sent by emergency mode.
 
