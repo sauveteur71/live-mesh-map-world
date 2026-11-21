@@ -201,7 +201,7 @@ function creerRelief(config, journal, fournisseurs, options = {}) {
     const TAILLE = 4900;
     if (monde) {
       journal(`[Relief] téléchargement du relief Copernicus GLO-30 : ${nLat} × ${nLon} points (pas 250 m)…`);
-      z = await grilleCopernicus({ sud: emprise.sud, ouest: emprise.ouest, pasLat, pasLon, nLat, nLon }, (p) => { etat.progression = p; }, () => arrete);
+      z = await grilleCopernicus({ sud: emprise.sud, ouest: emprise.ouest, pasLat, pasLon, nLat, nLon }, (p) => { etat.progression = p; }, () => arrete, journal);
     } else {
     journal(`[Relief] téléchargement du MNT IGN : ${nLat} × ${nLon} points (pas 250 m)…`);
     // Trois blocs demandés en même temps au service altimétrique (≈ 3 fois plus rapide, sans le surcharger)
