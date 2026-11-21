@@ -51,5 +51,5 @@ Only publish the web map (port 8095, ideally behind an HTTPS reverse proxy or Ta
 
 ## Licence and credits
 - GPL-3.0. Created by **F4GLD** · [♥ Support the project](https://www.helloasso.com/associations/radioclub-du-velay/formulaires/2) (Radio-club du Velay).
-- Terrain: Copernicus DEM © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; IGN RGE ALTI (Licence Ouverte Etalab). OpenStreetMap © contributors (ODbL).
+- Terrain: Copernicus DEM © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; IGN RGE ALTI (Licence Ouverte Etalab); coarse world terrain NOAA NCEI ETOPO1 (public domain). OpenStreetMap © contributors (ODbL).
 - Meshtastic® is a registered trademark of Meshtastic LLC. This project is not affiliated with Meshtastic LLC.
