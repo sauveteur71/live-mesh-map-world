@@ -214,7 +214,8 @@ function creerSecteurs({
   function publier(s, e) {
     e.message = message(e);
     lora(s, e);
-    const niveau = e.type === 'sortie' || e.type === 'entree' ? 'critique' : e.type === 'silence' ? 'attention' : 'info';
+    // Critique seulement pour un passage qui déclenche l'alerte du secteur (pas pour « dans le secteur » au départ)
+    const niveau = (e.type === 'sortie' || e.type === 'entree') && e.alerte ? 'critique' : e.type === 'silence' ? 'attention' : 'info';
     diffuser({ genre: 'secteur-alerte', niveau, ...e });
     if (e.notifier) journal(`[Secteurs] ${e.message}`);
     try { surEvenement({ ...e, niveau }); } catch (x) { journal('[Secteurs]', x.message); }
