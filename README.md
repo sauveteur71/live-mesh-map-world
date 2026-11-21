@@ -34,12 +34,13 @@ Or by hand: `cp .env.exemple .env` (set at least `DEPARTEMENT`, `RADIO_FREQ_MHZ`
 
 ## What it does
 - **Live map** of Meshtastic and MeshCore nodes (alone or overlaid): relays, clients, gateways, repeaters, room servers, companions, sensors; measured RF links, traceroutes, telemetry, alerts, live packet animation, 24 h replay.
-- **Messages** from both networks, with the channels that have new messages highlighted, acks and “heard by” for every message.
+- **Messages** from both networks, with the channels that have new messages highlighted, acks and “heard by” for every message; **search** in messages (a word, a name or a callsign, case and accents ignored).
 - **Coverage from terrain, worldwide**: point coverage, terrain profile and link budget, best high points, where to place relays, “what if” simulation. Terrain comes from **Copernicus DEM GLO-30** (ESA, free) outside France and **IGN RGE ALTI** in France, at 250 m resolution, calibrated on your measured links.
 - **Remote administration over LoRa**: Meshtastic PKI admin (firmware ≥ 2.5), targeted reads, templates, favorites between relays, compliance check; MeshCore repeaters (settings, regions, passwords, traces, telemetry).
 - **Field work**: reports (flooded road, fallen tree…) sent over LoRa as Meshtastic waypoints, teams with an encrypted channel and position tracking, **alert sectors** (geofencing: warning when a team member leaves a drawn area, with debouncing and an exportable log), an **emergency mode** that switches the map to a crisis set-up for every connected account (banner, simplified high-contrast map, time-stamped crisis log), offline field surveys.
 - **Meshtastic ⇄ MeshCore bridge** for channel messages (optional, off by default).
-- Public map, GeoJSON / GPX exports, Prometheus metrics, Home Assistant, PostgreSQL archive.
+- Public map, GeoJSON / GPX exports, Prometheus metrics, Home Assistant, PostgreSQL archive, optional **donor wall** (HelloAsso entries added by the administrator with the donor's consent, public GitHub sponsors).
+- Interface in **16 languages**; server log in English or French.
 
 ## Areas and radio
 - Outside France, the map's area is a **1° × 1° square** named after its south-west corner: `MN40W075` = 40–41°N, 75–74°W. Points clicked elsewhere automatically load the square they fall in (a few seconds, cached on disk).

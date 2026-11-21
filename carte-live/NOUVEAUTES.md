@@ -16,6 +16,42 @@ The section of each version is copied as is into the GitHub release notes.
 - **Time-stamped crisis log**: start, help requests, distress messages heard on the channels (SOS, MAYDAY, 🔔…), sector events, new critical alerts, hand-written notes, end; **CSV export**, the 10 previous crises are kept. Survives a restart.
 - No radio setting is changed and no LoRa message is sent by emergency mode.
 
+### ⚡ The map no longer freezes
+- The **relay** of each packet is found in an index (before, the whole node table was re-read for every packet); the **node list** is prepared at most every 10 s and shared between all visitors, who now only receive the nodes that changed; Meshtastic statistics and alerts computed by the database; **hourly purge in small batches** of 250 rows; new nodes filtered by area; MeshCore packets outside the perimeter dropped from the MQTT topic.
+- **Map health › Responsiveness** (*Network*): **freezes** measured every minute (“warning” alert beyond 1.5 s repeated, “critical” beyond 5 s), freeze curve, **slowest tasks of the last hour** (longest run, average, number of runs) and, for each recent freeze, the suspect task. `outils/banc-reactivite.js` tool to measure an installation.
+- Copernicus terrain decoded in a separate thread and tiles read one by one; yield points in coverage computations: the map stays responsive while a terrain loads.
+
+### 🏔️ Approximate terrain and terrain disk space
+- **Coarse terrain of the whole world** (NOAA ETOPO1, ≈ 9 km, 19 MB downloaded once in the background): while the detailed terrain of an area downloads, the coverage of a point, a site, several sites or the network, the “what if” simulation and “link two places” already show up, marked **“⏳ Approximate terrain”**, then are recomputed by themselves on the detailed terrain. Never cached as if it were detailed. **On by default** in the world edition (`RELIEF_MONDE=non` to turn it off, or *Tools › 🗺️ Area terrain › 💾 Terrain downloaded on this server*).
+- **Terrain cache purge** (administrator, same block): space used, each area with its size and last use, deletion **per area**, of areas **unused for N days** or of **everything** (with confirmation), **limit in GB** beyond which the least recently used areas are deleted by themselves. The map's own area, an area being loaded or used less than 10 min ago are never deleted; every purge is written to the log.
+
+### 🔎 Search in messages
+- **“Search a word, a name or a callsign…”** field at the top of the *Messages* tab: text of Meshtastic and MeshCore messages (SQLite full-text index, **case and accents ignored**, start of word: “chap” finds “chapeau”), **long name, short name, id** (`!xxxxxxxx`, number, start of a MeshCore key) of the sender and of the recipient of a direct message, under their **current name** even if the node was renamed.
+- Results from newest to oldest, highlighted terms, why it matched (text, sender, recipient), “Older…”; a click opens the message in its place in its channel.
+- **Same permissions** as reading messages: logged-in members; in the demo, public channels only, never direct messages. The index is built at the first start and follows the retention purge.
+
+### 💜 Donor wall
+- *Tools › 📤 Public map and exports › Donor wall* (administrator): a **discreet banner** at the top of the map and of the public page thanks those who support the project (shortened name “42BAR***”, country, amount only if you want it). Every visitor can close it for good. Everything is **off by default**.
+- **HelloAsso** (donations to Radio-club du Velay): HelloAsso does not say whether a donor agrees to be shown, so **no donation appears automatically**: the administrator adds each entry by hand, with a mandatory “donor's consent” box. The API credentials only serve to check the access.
+- **GitHub Sponsors**: only the sponsors that GitHub marks **public** are read (token kept on the server, never sent to the browser). Settings also in the `.env` (`HELLOASSO_*`, `GITHUB_SPONSORS_*`, `DONATEURS_INTERVALLE_HEURES`); keys and tokens are never shown again nor written to the log.
+
+### 🌐 7 more interface languages
+- The interface now exists in **16 languages**: Traditional Chinese, Swedish, Greek, Turkish, Korean, Japanese and Ukrainian join French, English, Spanish, German, Italian, Portuguese, Dutch, Polish and Czech (*Settings › Display › 🌐 Language*; follows the browser by default).
+
+### 📡 Meshtastic firmware 2.8
+- **Packet signatures** checked by the map with the sender's public key (✍ signed, ✍ ? unknown key, ⚠ invalid signature), “signs its packets” badge in the node sheet.
+- **Renumbered nodes** (number derived from the key in 2.8): safe merge when the number follows from the key, reset nodes offered for merging (same name and hardware), merge extended to teams, favorites and persons in charge, **undo of the last 20 merges**.
+- Node sheet: “no position received” explained (position off by default in 2.8), blurred position shown as a circle. TinyFast/TinySlow, LiteFast/LiteSlow, NarrowFast/NarrowSlow presets recognised everywhere.
+
+### 🔭 MeshCore: public observatories (CoreScope)
+- The community [CoreScope](https://github.com/Kpa-clawbot/corescope) observatories (France, Texas, Belgium/Netherlands) become a **MeshCore source** without account or key: *MeshCore › Companion › Public observatories*, or one click in the “No MeshCore source” message. The address is tested before being added.
+- API polled at our own pace (every 20 s), **cap per minute**, filter by area codes (`address=LYS,CFE`), known nodes imported at once, observatory credited at the foot of the map. Variables `MESHCORE_CORESCOPE`, `MESHCORE_CORESCOPE_INTERVALLE`, `MESHCORE_CORESCOPE_MAX_MINUTE`.
+- Without a MeshCore source: clear message and help in three choices, broker address accepted without `mqtts://`, MeshCore counters hidden on the public page until a node is received. Wiki: **minimum hardware** (Pi 4/5 in 64-bit, NAS).
+
+### 🔧 Fixes
+- Missing English translations of server messages (CoreScope observatories, merge and undo of 2.8 nodes); English log: “emergency mode ended by …” and “sector … created / deleted by …” were half translated.
+- *Connect a node over Wi-Fi*: the “Connect” button was white on white.
+
 ## 1.5.14
 
 ### 🔧 Fixes

@@ -4,6 +4,7 @@
 - **5 rubriques** en haut du panneau : **Réseau** (vue d'ensemble, nœuds, trafic, statistiques, MeshCore), **Messages** (Meshtastic et MeshCore), **Couverture**, **Gérer** (programmation Meshtastic et MeshCore, équipes, clés, firmware) et **Réglages**. Les sous-rubriques s'affichent juste dessous.
 - **Accueil « Que voulez-vous faire ? »** : de grandes tuiles (voir le réseau, lire et écrire, signaler, étudier la couverture, gérer mes nœuds, régler la carte). Le tableau de bord complet est replié dessous.
 - **Niveau d'affichage** (accueil, ou Réglages) : **Simple** montre l'essentiel, **Opérateur** ajoute la couverture avancée, le trafic et les outils de terrain, **Expert** montre tout. Par défaut : simple pour un visiteur ou un membre, opérateur pour un gestionnaire, expert pour un administrateur. Les droits ne changent pas : seul l'affichage est allégé.
+- **Langue** : *Réglages › Affichage › 🌐 Langue* (ou en bas de l'accueil) : 16 langues (anglais, français, espagnol, allemand, italien, portugais, néerlandais, polonais, tchèque, suédois, chinois traditionnel, grec, turc, coréen, japonais, ukrainien). Par défaut, celle du navigateur.
 - **Réglages** : tout est rangé au même endroit (affichage, compte, modules et réseaux, carte, MQTT, comptes, sauvegardes, mise à jour, toute la France, passerelle, équipes).
 - **Une seule recherche** : le champ au-dessus de la carte trouve un lieu, un nœud, des coordonnées… et aussi une **fonction** ou un réglage (« mqtt », « équipes », « mise à jour »). ⚙️🔎 ou Ctrl+K ouvre la recherche des fonctions ; l'étoile ☆ d'un résultat l'ajoute à **⭐ Mes raccourcis** sur l'accueil, et les fonctions récentes sont proposées en premier.
 - **Bouton ＋** sur la carte : touchez ＋ puis un point de la carte pour signaler un événement, voir la couverture depuis ce point, le partager ou tracer un profil (sans clic droit, pratique sur téléphone).
@@ -63,6 +64,15 @@ Une page publique (sans messages ni position exacte des particuliers) peut être
 - Le titre suit le réseau et le secteur choisis.
 - **🧭 Essayer la carte complète (démo)** ouvre, pour tout le monde et sans compte, la carte complète en **démonstration**, sur la même vue : tous les onglets et écrans (Messages, Gérer, MeshCore, Réglages…), avec les vrais messages des **canaux publics** seulement (clé par défaut, canal Public et canaux « # » de MeshCore ; jamais les canaux privés ni les messages directs). Les mots de passe, clés de canaux, adresses, contacts et comptes ne sont jamais envoyés ; les comptes, le journal, les sauvegardes et la mise à jour restent privés. Rien ne s'enregistre ni ne s'envoie par radio : chaque tentative affiche « Démonstration : rien n'est enregistré ni envoyé ». Pas de connexion ni d'inscription depuis la démo. Lien direct : `/?consultation`.
 - Le lien vers la carte complète (administration) n'apparaît qu'aux administrateurs connectés.
+
+## Mur des donateurs
+Un **bandeau discret** en haut de la carte et de la page publique (💜) remercie ceux qui soutiennent le projet : nom abrégé (« 42BAR*** »), pays et, seulement si l'administrateur le choisit, le montant. Chaque visiteur peut le fermer d'un clic sur ✕ (il ne revient plus dans ce navigateur). Tout est **désactivé par défaut** : rien ne s'affiche tant qu'aucune source n'est activée.
+
+Réglages : *Outils › 📤 Carte publique et exports › Mur des donateurs* (administrateur). Deux sources indépendantes :
+- **HelloAsso** (dons à l'association Radio-club du Velay) : HelloAsso ne dit pas si un donateur accepte d'être montré publiquement, donc **aucun don n'apparaît automatiquement**. L'administrateur ajoute chaque don à la main (nom ou pseudonyme, pays, montant), avec la case **« Le donateur a accepté d'être affiché sur la carte »** obligatoire ; une entrée se retire d'un clic. Les identifiants d'API (créés sur admin.helloasso.com, rubrique API) servent seulement à vérifier que l'accès au formulaire fonctionne.
+- **GitHub Sponsors** : la carte lit les parrainages du compte GitHub indiqué avec un jeton à lecture seule (`read:user`) et n'affiche que les sponsors que GitHub marque **publics** ; les sponsors privés ne sont jamais montrés. Les sources sont relues toutes les heures (`DONATEURS_INTERVALLE_HEURES`, 1 à 24).
+
+Clé HelloAsso et jeton GitHub ne sont jamais renvoyés au navigateur ni écrits dans le journal : un secret déjà saisi apparaît comme « •••••• (inchangé) », et un champ laissé vide garde la valeur précédente. Les mêmes réglages existent dans le `.env` (`HELLOASSO_*`, `GITHUB_SPONSORS_*`) ; ceux faits depuis la carte sont enregistrés dans `/data/donateurs.json` et priment. Aucune adresse e-mail ni adresse postale n'est jamais lue.
 
 ## Favoris et « Mes nœuds »
 Dans la fiche d'un nœud, Meshtastic ou MeshCore (compte connecté) :

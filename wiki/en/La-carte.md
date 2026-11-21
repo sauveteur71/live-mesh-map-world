@@ -4,7 +4,7 @@
 - **5 sections** at the top of the panel: **Network** (overview, nodes, traffic, statistics, MeshCore), **Messages** (Meshtastic and MeshCore), **Coverage**, **Manage** (Meshtastic and MeshCore programming, teams, keys, firmware) and **Settings**. Sub-sections show just below.
 - **“What do you want to do?” home**: large tiles (see the network, read and write, report, study coverage, manage my nodes, set up the map). The full dashboard is folded below.
 - **Display level** (home, or Settings): **Simple** shows the essentials, **Operator** adds advanced coverage, traffic and field tools, **Expert** shows everything. By default: simple for a visitor or member, operator for a manager, expert for an administrator. Permissions don't change: only the display is lighter.
-- **Language**: *Settings › Display › 🌐 Language* (or at the bottom of the home screen): French or English. By default it follows the browser's language.
+- **Language**: *Settings › Display › 🌐 Language* (or at the bottom of the home screen): 16 languages (English, French, Spanish, German, Italian, Portuguese, Dutch, Polish, Czech, Swedish, Traditional Chinese, Greek, Turkish, Korean, Japanese, Ukrainian). By default it follows the browser's language.
 - **Settings**: everything is in one place (display, account, nodes and networks, map, MQTT, accounts, backups, update, whole of France, bridge, teams).
 - **A single search**: the field above the map finds a place, a node, coordinates… and also a **feature** or a setting (“mqtt”, “teams”, “update”). ⚙️🔎 or Ctrl+K opens the feature search; the ☆ star of a result adds it to **⭐ My shortcuts** on the home screen, and recent features are offered first.
 - **＋ button** on the map: tap ＋ then a point on the map to report an event, see the coverage from this point, share it or draw a profile (no right-click needed, handy on a phone).
@@ -64,6 +64,15 @@ A public page (no messages or exact positions of private individuals) can be sha
 - The title follows the chosen network and area.
 - **🧭 Try the full map (demo)** opens, for everyone and without an account, the full map as a **demo**, on the same view: every tab and screen (Messages, Manage, MeshCore, Settings…), with the real messages of **public channels** only (default key, MeshCore Public and “#” channels; never private channels or direct messages). Passwords, channel keys, addresses, contacts and accounts are never sent; accounts, log, backups and update stay private. Nothing is saved or sent by radio: every attempt shows “Demo: nothing is saved or sent”. No sign-in or sign-up from the demo. Direct link: `/?consultation`.
 - The link to the full map (administration) only appears to logged-in administrators.
+
+## Donor wall
+A **discreet banner** at the top of the map and of the public page (💜) thanks those who support the project: shortened name (“42BAR***”), country and, only if the administrator chooses so, the amount. Every visitor can close it with ✕ (it no longer comes back in that browser). Everything is **off by default**: nothing shows until a source is enabled.
+
+Settings: *Tools › 📤 Public map and exports › Donor wall* (administrator). Two independent sources:
+- **HelloAsso** (donations to the Radio-club du Velay association): HelloAsso does not say whether a donor agrees to be shown publicly, so **no donation appears automatically**. The administrator adds each donation by hand (name or nickname, country, amount), with the mandatory **“The donor agreed to be shown on the map”** box; an entry is removed with one click. The API credentials (created on admin.helloasso.com, API section) only serve to check that the access to the form works.
+- **GitHub Sponsors**: the map reads the sponsorships of the given GitHub account with a read-only token (`read:user`) and only shows the sponsors that GitHub marks **public**; private sponsors are never shown. Sources are re-read every hour (`DONATEURS_INTERVALLE_HEURES`, 1 to 24).
+
+The HelloAsso secret and the GitHub token are never sent back to the browser nor written to the log: a secret already entered shows as “•••••• (unchanged)”, and a field left empty keeps the previous value. The same settings exist in the `.env` (`HELLOASSO_*`, `GITHUB_SPONSORS_*`); those made from the map are saved in `/data/donateurs.json` and take precedence. No e-mail or postal address is ever read.
 
 ## Favorites and “My nodes”
 In a node's sheet, Meshtastic or MeshCore (logged-in account):
