@@ -3,28 +3,52 @@
 // Les zones d'étude hors de France sont des carrés de 1° × 1°, nommés d'après leur coin sud-ouest :
 // « MN40W075 » = 40° à 41° N, 75° à 74° O. Une marge de 0,4° (≈ 44 km) les entoure pour que la couverture
 // d'un point proche du bord ne soit pas tronquée.
-const { fromUrl, Pool } = require('geotiff');
+const { fromCustomClient, BaseClient, Pool } = require('geotiff');
 
 // Décodage des tuiles (DEFLATE + prédicteur flottant, ≈ 0,3 à 0,6 s par tuile) dans un fil séparé : dans le fil
 // principal, chaque tuile figeait la carte plusieurs centaines de millisecondes. Un seul fil, créé pour le chargement
 // puis arrêté : ≈ 50 Mo de plus pendant le chargement seulement (conteneur limité à 512 Mo). RELIEF_SANS_FIL=1 : décodage
 // dans le fil principal, comme avant.
-let pool = null, utilisateursPool = 0, poolEnPanne = false;
+// Fil abandonné (bloqué, ou erreur dans le fil que geotiff 2.1.3 ne remonte pas) : décodage dans le fil principal,
+// puis nouvel essai du fil séparé après 10 min (et non jusqu'au redémarrage).
+const PANNE_POOL_MS = 10 * 60000;
+let pool = null, utilisateursPool = 0, poolEnPanneDepuis = 0;
+let journalMonde = () => {};
 function prendrePool() {
-  if (poolEnPanne || process.env.RELIEF_SANS_FIL === '1') return null;
-  try { if (!pool) pool = new Pool(1); utilisateursPool++; return pool; } catch { poolEnPanne = true; return null; }
+  if (process.env.RELIEF_SANS_FIL === '1') return null;
+  if (poolEnPanneDepuis) { if (Date.now() - poolEnPanneDepuis < PANNE_POOL_MS) return null; poolEnPanneDepuis = 0; journalMonde('[Relief] fil de décodage Copernicus réautorisé après 10 min'); }
+  try { if (!pool) pool = new Pool(1); utilisateursPool++; return pool; } catch (e) { poolEnPanneDepuis = Date.now(); journalMonde('[Relief] fil de décodage Copernicus impossible, décodage dans le fil principal :', e.message); return null; }
 }
 function rendrePool(p) {
   if (!p || p !== pool) return;
   if (--utilisateursPool <= 0) { try { pool.destroy(); } catch { /* déjà arrêté */ } pool = null; utilisateursPool = 0; }
 }
-// Fil de décodage bloqué (il ne répond plus) : arrêté, et les tuiles suivantes décodées dans le fil principal
-function abandonnerPool() {
-  poolEnPanne = true;
+// Fil de décodage bloqué (il ne répond plus) : arrêté, et les tuiles suivantes décodées dans le fil principal.
+// Une autre zone qui partageait ce fil le voit disparaître (fil !== pool) et passe elle aussi au fil principal.
+function abandonnerPool(raison) {
+  poolEnPanneDepuis = Date.now();
+  journalMonde(`[Relief] fil de décodage Copernicus abandonné (${raison}) : décodage dans le fil principal pendant 10 min`);
   if (pool) { try { pool.destroy(); } catch { /* déjà arrêté */ } }
   pool = null; utilisateursPool = 0;
 }
 const avecDelai = (p, ms, quoi) => Promise.race([p, new Promise((_, ko) => setTimeout(() => ko(new Error(quoi + ' : délai dépassé')), ms).unref())]);
+// Délais séparés : chaque requête HTTP vers AWS a le sien (DELAI_TELECHARGEMENT_MS, par plage d'octets), et le délai de
+// décodage (180 s) ne couvre plus un téléchargement lent — un réseau lent n'est pas un fil bloqué, et n'abandonne pas le fil.
+const DELAI_TELECHARGEMENT_MS = Number(process.env.COPERNICUS_DELAI_S) * 1000 || 60000;
+class ClientTuile extends BaseClient {
+  async request({ headers, signal } = {}) {
+    const minuterie = AbortSignal.timeout(DELAI_TELECHARGEMENT_MS);
+    const s = signal ? AbortSignal.any([signal, minuterie]) : minuterie;
+    let reponse;
+    try { reponse = await fetch(this.url, { headers, signal: s }); } catch (e) { throw minuterie.aborted ? new Error(`téléchargement de la tuile trop lent (${DELAI_TELECHARGEMENT_MS / 1000} s)`) : e; }
+    return {
+      status: reponse.status,
+      getHeader: (n) => reponse.headers.get(n),
+      getData: async () => { try { return await reponse.arrayBuffer(); } catch (e) { throw minuterie.aborted ? new Error(`téléchargement de la tuile trop lent (${DELAI_TELECHARGEMENT_MS / 1000} s)`) : e; } },
+    };
+  }
+}
+const ouvrirTuile = (url) => fromCustomClient(new ClientTuile(url), { allowFullFile: false });
 const ceder = () => new Promise((r) => setImmediate(r));
 
 const RE_CODE = /^M([NS])(\d{2})([EW])(\d{3})$/;
@@ -65,7 +89,8 @@ function urlTuile(la, lo) {
 // Altitudes d'une grille régulière (ligne 0 = sud) : chaque tuile de 1° est lue une fois, en version réduite
 // (aperçu du fichier, ≈ 120 m), puis échantillonnée en bilinéaire. Mer et tuiles absentes : NaN.
 // Les tuiles sont lues une par une (et non trois à la fois) : la mémoire reste basse et la carte réactive.
-async function grilleCopernicus({ sud, ouest, pasLat, pasLon, nLat, nLon }, progression = () => {}, arrete = () => false) {
+async function grilleCopernicus({ sud, ouest, pasLat, pasLon, nLat, nLon }, progression = () => {}, arrete = () => false, journal = null) {
+  if (journal) journalMonde = journal;
   const z = new Float32Array(nLat * nLon).fill(NaN);
   let fil = null, filPris = false; // fil de décodage pris à la première tuile à décoder (pas pour la mer)
   const nord = sud + (nLat - 1) * pasLat, est = ouest + (nLon - 1) * pasLon;
@@ -80,7 +105,8 @@ async function grilleCopernicus({ sud, ouest, pasLat, pasLon, nLat, nLon }, prog
     for (let essai = 0; essai < 3 && !r && !absente; essai++) {
       try {
         if (!filPris) { filPris = true; fil = prendrePool(); }
-        const tiff = await fromUrl(urlTuile(la, lo), { allowFullFile: false });
+        if (fil && fil !== pool) fil = null; // fil abandonné par une autre zone : il est détruit, on continue sans lui
+        const tiff = await ouvrirTuile(urlTuile(la, lo));
         const im0 = await tiff.getImage();
         // ≈ 120 m : assez fin pour une grille de 250 m, et les aperçus du fichier évitent de tout télécharger
         const cw = Math.max(60, Math.round(im0.getWidth() / 4)), ch = Math.max(60, Math.round(im0.getHeight() / 4));
@@ -104,7 +130,8 @@ async function grilleCopernicus({ sud, ouest, pasLat, pasLon, nLat, nLon }, prog
           r = tout;
         }
       } catch (e) {
-        if (fil && /délai dépassé/.test(e.message)) { abandonnerPool(); fil = null; }
+        if (fil && fil === pool && /délai dépassé/.test(e.message)) abandonnerPool(e.message);
+        if (fil && fil !== pool) fil = null;
         if (essai === 2) throw new Error(`relief Copernicus indisponible (${e.message})`);
         await new Promise((res) => setTimeout(res, 2000 * (essai + 1)));
       }
