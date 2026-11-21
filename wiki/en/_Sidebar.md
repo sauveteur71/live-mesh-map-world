@@ -16,6 +16,7 @@
 **Administration**
 - [[Remote programming|Programmation à distance]]
 - [[Teams|Équipes]]
+- [[Alert sectors and emergency mode|Secteurs-et-mode-urgence]]
 - [[Reports|Signalements]]
 - [[Growing the network|Faire grandir le réseau]]
 - [[MeshCore]]

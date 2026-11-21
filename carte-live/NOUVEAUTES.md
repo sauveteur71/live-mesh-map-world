@@ -2,6 +2,20 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.6.0
+
+### 🗺️ Alert sectors (geofencing)
+- *Tools › 🗺️ Alert sectors* (managers read, administrators edit): draw a **polygon** or a **circle** on the map, attach it to a **team** (its current members) and/or to chosen nodes (Meshtastic, or MeshCore by public key), and get an alert when someone **leaves** the sector, **enters** it (area to avoid) or both.
+- **No false alerts**: margin around the boundary, 2 positions in a row needed to change state (adjustable), minimum delay between two alerts for the same node, a packet heard by several gateways counts once. **Blurred positions** (firmware 2.7/2.8) widen the margin; a position blurrier than the sector is ignored and logged once.
+- Optional **loss of contact** alert (no position for 10 min to 2 h) and optional short **LoRa message** on a channel (at most one every 30 s).
+- Alerts go where the others go: *Network › Alerts*, sound and notification for connected managers, Android app, MQTT home automation. **Log** of entries, exits and losses of contact, filter by sector, **CSV export**.
+- The former team “safety zone” (circle) becomes a sector automatically. Sectors, their alerts and team help requests are no longer sent to the public view.
+
+### 🚨 Emergency mode
+- *Tools › 🚨 Emergency mode* (manager or administrator), inspired by MeshWave's emergency mode: **red banner** and red frame for every connected account, **simplified high-contrast map** (ordinary network in the background, responders, help requests and sectors in front), **crisis board** (help requests, sector alerts, responders, critical alerts), network status every 10 s, reports and incident log brought back if they were hidden.
+- **Time-stamped crisis log**: start, help requests, distress messages heard on the channels (SOS, MAYDAY, 🔔…), sector events, new critical alerts, hand-written notes, end; **CSV export**, the 10 previous crises are kept. Survives a restart.
+- No radio setting is changed and no LoRa message is sent by emergency mode.
+
 ## 1.5.14
 
 ### 🔧 Fixes
