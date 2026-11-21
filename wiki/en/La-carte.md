@@ -38,7 +38,14 @@ In *Messages*, clicking a message's origin (📡 / 🌐) shows its **route**:
 - **Alerts**: silent node, low battery, saturated channel, gateway offline.
 - **Statistics › Maintenance**: relays' radio load, runtime, firmware, role advice.
 - **History** over more than a year, **replay** of the last 24 hours, **weekly report** (*Tools*).
-- **Map health** (*Network*): processor, memory, disk, database, MQTT.
+- **Map health** (*Network*): processor, memory, disk, database, MQTT, responsiveness.
+  - **Freezes**: every minute the map measures its longest moment without responding. "Warning" alert if it
+    freezes for more than 1.5 s at least twice in 10 minutes, "critical" beyond 5 s in one go.
+  - **Slowest tasks (last hour)**: every job is timed (MQTT message, status broadcast every 30 s, hourly purge,
+    API pages, timers). The table shows the longest run, the average and the number of runs. A task that often
+    exceeds 500 ms freezes the map for all visitors.
+  - **Recent freezes**: time, duration and longest task of that minute (the suspect). A "timer …" task is named
+    after the program file that created it: quote that name when reporting a problem.
 
 ## How to reach it and person in charge of a node
 Node card, **Neighbours** tab, **How to reach it** section: through which station of the map to reach it (linked module, listening modules, then MQTT gateways that heard it) and the state of the link: *direct, both ways proven*, *direct, return path not proven*, *N hops* or *out of range*. Hearing a node does not prove it hears us: the return path is proven when it lists us as a neighbour, a traceroute comes back or a link is measured the other way. An MQTT gateway only listens.
