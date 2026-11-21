@@ -5,8 +5,8 @@
 // nombre…), lui-même traduit s'il est connu. Le contenu des utilisateurs (messages, noms) porte translate="no" et
 // n'est jamais touché.
 (function () {
-  const LANGUES = { fr: 'Français', en: 'English', es: 'Español', de: 'Deutsch', it: 'Italiano', pt: 'Português', nl: 'Nederlands', pl: 'Polski', cs: 'Čeština' };
-  const LOCALES = { fr: 'fr-FR', en: 'en-GB', es: 'es-ES', de: 'de-DE', it: 'it-IT', pt: 'pt-PT', nl: 'nl-NL', pl: 'pl-PL', cs: 'cs-CZ' };
+  const LANGUES = { fr: 'Français', en: 'English', es: 'Español', de: 'Deutsch', it: 'Italiano', pt: 'Português', nl: 'Nederlands', pl: 'Polski', cs: 'Čeština', sv: 'Svenska', zh: '繁體中文', el: 'Ελληνικά', tr: 'Türkçe', ko: '한국어', ja: '日本語', uk: 'Українська' };
+  const LOCALES = { fr: 'fr-FR', en: 'en-GB', es: 'es-ES', de: 'de-DE', it: 'it-IT', pt: 'pt-PT', nl: 'nl-NL', pl: 'pl-PL', cs: 'cs-CZ', sv: 'sv-SE', zh: 'zh-TW', el: 'el-GR', tr: 'tr-TR', ko: 'ko-KR', ja: 'ja-JP', uk: 'uk-UA' };
   const DEFAUT = 'en'; // langue par défaut de l'édition quand celle du navigateur n'est pas proposée
   const lire = () => { try { return localStorage.getItem('gaulix_langue'); } catch { return null; } };
   const nav = String(navigator.language || '').slice(0, 2).toLowerCase();
