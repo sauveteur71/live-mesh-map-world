@@ -10,6 +10,14 @@ The section of each version is copied as is into the GitHub release notes.
 - **No key is ever shown**: a changed channel shows “key sent (not shown)”. Admin keys, passwords and tokens are hidden, including for a setting the map does not know yet. Operation parameters no longer leave the server, not even for the follow-up of a change.
 - A long summary folds under “and N other settings” (nothing is removed), reads well on a phone, values in high-contrast text.
 
+### 🌡️ MeshCore sensor readings: they start again on their own
+- **A node that does not answer no longer blocks the others**: each node of a MeshCore task now has a maximum duration, **set in MeshCore › Companion › MeshCore module** — *Maximum time for a reading, per node* (1 to 30 min, 4 by default: telemetry, status, path, trace) and *Maximum time for a full read, per node* (5 to 240 min, 60 by default: read of settings, programming, commissioning) — and so does each task. An operation that never handed back control used to stop **all** the following automatic readings, without reporting anything, until the map was restarted.
+- **Quick retry**: a reading request left unanswered is tried again twice, a quarter of an hour apart, instead of waiting for the whole interval (one lost attempt used to cost a 3 h gap for a reading every 3 h).
+- **No more permanent blocking**: a task stopped from the interface while it was waiting its turn was never marked as finished; its nodes were then never read automatically again, even after a restart (the task file is repaired at startup). Sensor readings now start again by themselves if a task drags on for more than an hour.
+- **“Late readings” alert**: it now also works for a node set up before this tracking existed and never read since.
+- **Sensor alerts visible outside the area**: the “late readings” alert and the one for a measurement outside its threshold are now shown even if the sensor is outside the map's area. A sensor whose reading you set up yourself is a node you follow, wherever it is. The other MeshCore alerts (silent, battery, channel) stay filtered on the area.
+- Reminder shown in the *Sensors* tab: the number of readings under a measurement is the one of the **displayed period** (1, 7, 30 or 90 days), not a total.
+
 ## 1.6.0
 
 ### 🗺️ Alert sectors (geofencing)
