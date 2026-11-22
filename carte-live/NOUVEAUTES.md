@@ -2,6 +2,21 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.7.0
+
+### 🖱️ The Tools menu buttons work again
+- **12 buttons did nothing when clicked** (🔌 This PC's USB node, 📶 Bluetooth node, 📟 Meshtastic client, ⚡ Flash a Meshtastic node, ⚡ Flash a MeshCore node, 🛠️ Configure a MeshCore repeater, 📟 MeshCore app, 🕸️ Topology and simulation (Meshtastic and MeshCore), ⇄ Cross-network bridge, ☀️ Light theme, 📲 Install the app). The map **layer** toggle handler was attached to every button sharing the same look, including those in the Tools menu, and overwrote their real action. It now only applies to real layer toggles.
+- Along the way, a **stray key** could have been stored in the layers kept by the browser: it is removed automatically, legitimate choices are kept. The **APRS stations**, **Rivers** and **LoRaWAN sensors** layers are finally remembered from one visit to the next.
+
+### 🔌 A click on USB or Bluetooth always answers something
+- Chrome only opens USB (Web Serial) and Bluetooth (Web Bluetooth) on a **secure** page: map over HTTPS, or opened from the machine running it. Map opened over `http://` from another PC (a Tailscale address, for instance), or in Firefox or Safari: the **🔌 This PC's USB node** and **📶 Bluetooth node** buttons are marked **⚠**, and a click explains in plain words what is missing instead of doing nothing.
+- Every node connection path (Meshtastic and MeshCore, USB and Bluetooth, Tools menu and the “Connect a node” panel) **no longer fails silently**: chooser closed, empty list, port already in use, Bluetooth refused… each case gives a message that says what to do.
+
+### 🪟 Wider windows, and click next to one to close it
+- On a wide screen, settings windows open **wider** (1040 px instead of 760 px): everything is visible without scrolling, instead of a narrow column in the middle of the screen.
+- **⤢** button next to the close cross: widens further (up to 1480 px, or 1800 px for very large windows), **once for every window**, and the choice is kept for the next visit. Hidden below 1000 px wide: phones and tablets are unchanged.
+- **Clicking next to a window closes it**, just like the ✕ or the Esc key (no more scrolling back to the top of a long window to find the cross). A click inside the window, even on an edge or an empty area, never closes it, and neither does a text selection released outside. If **something has been typed**, the window stays open and says so: nothing is lost. The setup window is not closed this way.
+
 ## 1.6.0
 
 ### 🗺️ Alert sectors (geofencing)
