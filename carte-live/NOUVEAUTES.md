@@ -2,6 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.6.1
+
+### 🧾 Recent operations: what was really sent
+- *Manage › Program › Recent operations* used to show **firmware field names** (“telemetry · device (nodeInfoBroadcastSecs)”) and never the values. Each operation now shows, **setting by setting**, what was sent to the node, with units: “Node sheet: every 3 h”, “Transmit power: 20 dBm”, “Role: Router late”.
+- **Previous value** when it is really known: “before: every 15 min (read 20 min ago)”, from the last configuration read from the node before the send. A fix started from *🚦 Traffic control* shows the **measured** interval: “measured over 24 h: every 4 min” — a traffic measurement, not the setting stored in the node. With neither a reading nor a measurement, only the sent value is shown.
+- **No key is ever shown**: a changed channel shows “key sent (not shown)”. Admin keys, passwords and tokens are hidden, including for a setting the map does not know yet. Operation parameters no longer leave the server, not even for the follow-up of a change.
+- A long summary folds under “and N other settings” (nothing is removed), reads well on a phone, values in high-contrast text.
+
 ## 1.6.0
 
 ### 🗺️ Alert sectors (geofencing)
