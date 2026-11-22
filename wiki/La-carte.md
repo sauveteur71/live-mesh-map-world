@@ -67,7 +67,7 @@ Une page publique (sans messages ni position exacte des particuliers) peut être
 - Le lien vers la carte complète (administration) n'apparaît qu'aux administrateurs connectés.
 
 ## Mur des donateurs
-Un **bandeau discret** en haut de la carte et de la page publique (💜) remercie ceux qui soutiennent le projet : nom abrégé (« 42BAR*** »), pays et, seulement si l'administrateur le choisit, le montant. Chaque visiteur peut le fermer d'un clic sur ✕ (il ne revient plus dans ce navigateur). Tout est **désactivé par défaut** : rien ne s'affiche tant qu'aucune source n'est activée.
+Un **bandeau discret** en haut de la carte et de la page publique (💜) remercie ceux qui soutiennent le projet : nom (tel que saisi par l'administrateur pour HelloAsso, abrégé pour GitHub Sponsors), pays et, seulement si l'administrateur le choisit, le montant. Chaque visiteur peut le fermer d'un clic sur ✕ (il ne revient plus dans ce navigateur). Tout est **désactivé par défaut** : rien ne s'affiche tant qu'aucune source n'est activée.
 
 Réglages : *Outils › 📤 Carte publique et exports › Mur des donateurs* (administrateur). Deux sources indépendantes :
 - **HelloAsso** (dons à l'association Radio-club du Velay) : HelloAsso ne dit pas si un donateur accepte d'être montré publiquement, donc **aucun don n'apparaît automatiquement**. L'administrateur ajoute chaque don à la main (nom ou pseudonyme, pays, montant), avec la case **« Le donateur a accepté d'être affiché sur la carte »** obligatoire ; une entrée se retire d'un clic. Les identifiants d'API (créés sur admin.helloasso.com, rubrique API) servent seulement à vérifier que l'accès au formulaire fonctionne.

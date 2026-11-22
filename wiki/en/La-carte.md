@@ -67,7 +67,7 @@ A public page (no messages or exact positions of private individuals) can be sha
 - The link to the full map (administration) only appears to logged-in administrators.
 
 ## Donor wall
-A **discreet banner** at the top of the map and of the public page (💜) thanks those who support the project: shortened name (“42BAR***”), country and, only if the administrator chooses so, the amount. Every visitor can close it with ✕ (it no longer comes back in that browser). Everything is **off by default**: nothing shows until a source is enabled.
+A **discreet banner** at the top of the map and of the public page (💜) thanks those who support the project: name (as typed by the administrator for HelloAsso, shortened for GitHub Sponsors), country and, only if the administrator chooses so, the amount. Every visitor can close it with ✕ (it no longer comes back in that browser). Everything is **off by default**: nothing shows until a source is enabled.
 
 Settings: *Tools › 📤 Public map and exports › Donor wall* (administrator). Two independent sources:
 - **HelloAsso** (donations to the Radio-club du Velay association): HelloAsso does not say whether a donor agrees to be shown publicly, so **no donation appears automatically**. The administrator adds each donation by hand (name or nickname, country, amount), with the mandatory **“The donor agreed to be shown on the map”** box; an entry is removed with one click. The API credentials (created on admin.helloasso.com, API section) only serve to check that the access to the form works.

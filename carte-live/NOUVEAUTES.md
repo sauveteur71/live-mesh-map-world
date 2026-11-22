@@ -4,6 +4,9 @@ The section of each version is copied as is into the GitHub release notes.
 
 ## 1.7.1
 
+### 💜 Donor wall: HelloAsso names shown as typed
+- HelloAsso donations, added by hand by the administrator, now show **the name exactly as typed**: no more automatic shortening (“42BARBE” no longer becomes “42B***”). Shorten it yourself if you wish. GitHub Sponsors, read automatically, stay shortened.
+
 ### 🧰 Top menus always reachable to the last entry
 - On a computer, the **Tools** menu (especially with “Both” networks shown) could be taller than the window: the last entries (Public map and exports, Emergency mode, Weekly report…) went off screen with no way to reach them. The Tools, Layers and Radio coverage menus now stop at the bottom of the window and **scroll**.
 
