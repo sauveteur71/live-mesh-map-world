@@ -4,6 +4,9 @@ The section of each version is copied as is into the GitHub release notes.
 
 ## 1.7.1
 
+### 🧰 Top menus always reachable to the last entry
+- On a computer, the **Tools** menu (especially with “Both” networks shown) could be taller than the window: the last entries (Public map and exports, Emergency mode, Weekly report…) went off screen with no way to reach them. The Tools, Layers and Radio coverage menus now stop at the bottom of the window and **scroll**.
+
 ### 🌍 Area selector on a map outside France
 - On a map set to a **world square** (e.g. “40°N–41°N · 75°W–74°W”), the area menu at the top no longer offers **France** and the **13 French regions**. It now offers the map area and **Whole map**.
 - **Whole map** frames **every node the map knows** (Meshtastic and MeshCore, nodes announcing 0, 0 ignored), or a world view when there is none yet, instead of jumping to France.
