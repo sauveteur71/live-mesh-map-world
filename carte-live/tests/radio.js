@@ -2128,3 +2128,47 @@ test('MeshCore capteurs : un délai maximal absurde dans le fichier de réglages
   await b.avancer(4 * 60000);
   assert.equal(b.releves(b.CLES[1]), 1, 'réglage à 0 : ramené à 1 min');
 });
+
+// ---------- Sauvegardes des réglages : rien d'important ne doit manquer à la liste ----------
+
+test('Sauvegardes : chaque fichier de réglages listé est bien repris, puis remis à l’identique', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'sauve-liste-'));
+  const { creerStockage } = require('../src/base');
+  const { creerSauvegardes, FICHIERS } = require('../src/sauvegardes');
+  const st = creerStockage(path.join(dossier, 'carte-live.db'));
+  // Un contenu reconnaissable par fichier
+  const attendu = {};
+  for (const f of FICHIERS) {
+    attendu[f] = `contenu de ${f}`;
+    const cible = path.join(dossier, f);
+    fs.mkdirSync(path.dirname(cible), { recursive: true });
+    fs.writeFileSync(cible, attendu[f]);
+  }
+  const s = creerSauvegardes(dossier, st.db, () => {});
+  const copie = JSON.parse(s.lire(s.sauvegarder().nom).toString('utf8'));
+  assert.deepEqual(Object.keys(copie.fichiers).sort(), [...FICHIERS].sort(), 'tous les fichiers listés doivent être dans la sauvegarde');
+  for (const f of FICHIERS) fs.writeFileSync(path.join(dossier, f), 'écrasé');
+  s.restaurer(copie);
+  for (const f of FICHIERS) assert.equal(fs.readFileSync(path.join(dossier, f), 'utf8'), attendu[f], `${f} doit revenir à l’identique`);
+  // Aucun fichier binaire dans la liste : la sauvegarde les lit en UTF-8 et les abîmerait
+  assert.ok(!FICHIERS.some((f) => /\.(bin|db|jpg|png|tar\.gz)$/.test(f)), 'la liste ne doit contenir que du texte');
+  st.db.close();
+  fs.rmSync(dossier, { recursive: true, force: true });
+});
+
+test('Sauvegardes : un fichier dans un sous-dossier absent n’interrompt pas la restauration', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'sauve-sous-'));
+  const { creerStockage } = require('../src/base');
+  const { creerSauvegardes } = require('../src/sauvegardes');
+  const st = creerStockage(path.join(dossier, 'carte-live.db'));
+  const s = creerSauvegardes(dossier, st.db, () => {});
+  // Sauvegarde venue d'une autre carte : le sous-dossier « releves » n'existe pas encore ici
+  const copie = { format: 'carte-live-sauvegarde', version: 1, date: new Date().toISOString(),
+    fichiers: { 'releves/releves.json': '[]', 'secteurs.json': '{"secteurs":[]}' }, comptes: [] };
+  const r = s.restaurer(copie);
+  assert.equal(r.fichiers, 2, 'les deux fichiers doivent être écrits');
+  assert.ok(fs.existsSync(path.join(dossier, 'releves', 'releves.json')), 'le sous-dossier doit être créé');
+  assert.ok(fs.existsSync(path.join(dossier, 'secteurs.json')), 'les fichiers suivants ne doivent pas être perdus');
+  st.db.close();
+  fs.rmSync(dossier, { recursive: true, force: true });
+});
