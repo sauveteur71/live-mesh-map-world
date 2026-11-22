@@ -30,6 +30,9 @@ The section of each version is copied as is into the GitHub release notes.
 - **Sensor alerts visible outside the area**: the “late readings” alert and the one for a measurement outside its threshold are now shown even if the sensor is outside the map's area. A sensor whose reading you set up yourself is a node you follow, wherever it is. The other MeshCore alerts (silent, battery, channel) stay filtered on the area.
 - Reminder shown in the *Sensors* tab: the number of readings under a measurement is the one of the **displayed period** (1, 7, 30 or 90 days), not a total.
 
+### 🧭 Nodes of a department: Meshtastic, MeshCore or both
+- The *Nodes of a department* screen (search “43”, “Haute-Loire”…) now also lists **MeshCore nodes**, filed by the position of their latest advert. It starts from the network shown on the map (Meshtastic, MeshCore or both) and a **Meshtastic / MeshCore / Both** selector changes it on the spot; **MT** / **MC** tag on each row, *Network* column in the CSV export. Clicking a MeshCore node opens its MeshCore page, and closing it brings you back to the list.
+
 ## 1.6.0
 
 ### 🗺️ Alert sectors (geofencing)
