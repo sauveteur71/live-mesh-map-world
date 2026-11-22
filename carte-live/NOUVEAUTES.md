@@ -4,6 +4,9 @@ The section of each version is copied as is into the GitHub release notes.
 
 ## 1.7.1
 
+### 🖥️ 64-bit system checked at install
+- The install script now refuses a **32-bit** system (e.g. Raspberry Pi OS 32-bit, `armhf`) with a clear message, instead of letting Docker fail with `no matching manifest`. The map needs 64-bit Linux (x86-64 or ARM64). The README, Installation and Troubleshooting pages say so plainly, with the right check (`dpkg --print-architecture`).
+
 ### 💜 Donor wall: HelloAsso names shown as typed
 - HelloAsso donations, added by hand by the administrator, now show **the name exactly as typed**: no more automatic shortening (“42BARBE” no longer becomes “42B***”). Shorten it yourself if you wish. GitHub Sponsors, read automatically, stay shortened.
 

@@ -23,6 +23,14 @@ demander() { if [ -r /dev/tty ]; then printf '%s ' "$1" > /dev/tty; read -r rep 
 [ "$(id -u)" = 0 ] || erreur "Run the script as administrator: … | sudo sh"
 command -v curl > /dev/null 2>&1 || erreur "curl is required (apt install curl)"
 
+# 0. 64-bit CPU and system: the image only exists for amd64 and arm64. On a Raspberry Pi the kernel can be 64-bit
+#    (uname -m = aarch64) with a 32-bit system (armhf): what matters is the package architecture.
+arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+case "$arch" in
+  amd64|x86_64|arm64|aarch64) ;;
+  *) erreur "Unsupported system $arch: the map needs 64-bit Linux (x86-64 or ARM64). On a Raspberry Pi 4 or 5, install Raspberry Pi OS 64-bit (Raspberry Pi Imager). See https://github.com/sauveteur71/live-mesh-map-world/wiki/Installation" ;;
+esac
+
 # 1. Docker
 if ! command -v docker > /dev/null 2>&1; then
   info "Docker is not installed."

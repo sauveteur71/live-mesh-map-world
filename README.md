@@ -30,6 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/sauveteur71/live-mesh-map-world/mai
 ```
 Then open `http://SERVER_IP:8095`: the wizard creates the admin account, sets the area (“🌍 Outside France: choose the position…”) and the MQTT server. Everything else is done in the map; updates are one click.
 
+> **64-bit required**: an x86-64 or ARM64 CPU **and** a 64-bit system. On a Raspberry Pi, install **Raspberry Pi OS 64-bit** (`dpkg --print-architecture` must answer `arm64`); a 32-bit system (`armhf`) cannot run the map, even on a Pi 4 or 5. Only the Gaulix agent (which links a radio module to the map) also exists in 32-bit. Details: [wiki › Installation](https://github.com/sauveteur71/live-mesh-map-world/wiki/Installation).
+
 Or by hand: `cp .env.exemple .env` (set at least `DEPARTEMENT`, `RADIO_FREQ_MHZ`, `MQTT_URL`), then `docker compose up -d`.
 
 ## What it does
