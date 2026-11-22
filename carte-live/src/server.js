@@ -53,12 +53,17 @@ function zoneVoisins() {
   if (cacheVoisins.cle !== cle) cacheVoisins = { cle, val: calculerVoisins(config.departement.code, config.zone) };
   return cacheVoisins.val;
 }
-// Paramètre ?zone= : 1 = département, v = département + voisins, r84 = une région (code INSEE), sinon toute la carte
+// Paramètre ?zone= : 1 = département, v = département + voisins, r84 = une région (code INSEE), sinon toute la carte.
+// Carte réglée sur un carré du monde (hors de France) : pas de régions françaises, un « r84 » resté dans un
+// navigateur ou un lien retombe sur la zone de la carte (comme le fait l'interface).
 const bboxZone = (q) => {
   if (q === '1') return config.zone;
   if (q === 'v') return (zoneVoisins() || {}).bbox || config.zone;
   const m = /^r(\d{2})$/.exec(String(q || ''));
-  if (m) { const r = calculerRegions().find((x) => x.code === m[1]); return r ? r.bbox : null; }
+  if (m) {
+    if (carteMonde()) return config.zone;
+    const r = calculerRegions().find((x) => x.code === m[1]); return r ? r.bbox : null;
+  }
   return null;
 };
 const { decoderMessage, preparerCanaux } = require('./decodeur');
@@ -319,7 +324,9 @@ app.get('/api/config', (req, res) => {
     departement: config.departement,
     zone: config.zone,
     zoneVoisins: zoneVoisins(),
-    regions: calculerRegions().map(({ code, nom, bbox }) => ({ code, nom, bbox })),
+    // monde : zone de la carte hors de France (carré de 1°) → ni régions ni « France » dans le choix du secteur
+    monde: carteMonde(),
+    regions: carteMonde() ? [] : calculerRegions().map(({ code, nom, bbox }) => ({ code, nom, bbox })),
     zoneNom: config.zoneNom,
     radio: true,
     rejoindre: adhesion.actif(),

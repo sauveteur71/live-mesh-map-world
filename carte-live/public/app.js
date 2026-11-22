@@ -1916,7 +1916,8 @@ const CATALOGUE_REGLAGES = [
   ['Signalements (route inondée…)', 'Outils', 'signaler événement inondation alerte waypoint bipper germacrise', 'membre', () => ficheSignalements()],
 ];
 // Carte hors de France : zone d'étude = carré de 1° (MN40W075), pas de département
-const carteMondeClient = () => /^M[NS]\d{2}[EW]\d{3}$/.test(String(((etat.config || {}).departement || {}).code || ''));
+// Carte réglée hors de France (carré du monde) : le serveur le dit (config.monde), sinon d'après le code de la zone
+const carteMondeClient = () => (typeof (etat.config || {}).monde === 'boolean' ? etat.config.monde : /^M[NS]\d{2}[EW]\d{3}$/.test(String(((etat.config || {}).departement || {}).code || '')));
 function indexReglages() {
   const r = etat.admin ? 3 : etat.gestion ? 2 : etat.membre ? 1 : 0;
   const niv = { admin: 3, gestion: 2, membre: 1 };
@@ -3812,7 +3813,7 @@ async function couvertureMesuree(jours, noeud) {
       <div class="mesure"><span>Via relais seulement</span><b>${viaRelais}</b></div>
       <div class="mesure"><span>Surface mesurée</span><b>≈ ${surface} km²</b></div>
     </div>
-    ${horsZone ? `<p class="note">${horsZone} carré(s) hors de la zone affichée (${esc($('#sel-zone') ? $('#sel-zone').selectedOptions[0].textContent : 'zone')}) ne sont pas montrés : choisissez « France » dans le sélecteur de zone pour tout voir.</p>` : ''}
+    ${horsZone ? `<p class="note">${horsZone} carré(s) hors de la zone affichée (${esc($('#sel-zone') ? $('#sel-zone').selectedOptions[0].textContent : 'zone')}) ne sont pas montrés : choisissez « ${libelleToutZone()} » dans le sélecteur de zone pour tout voir.</p>` : ''}
     <div class="parametres compact"><label>Période <select id="mes-jours">${[1, 3, 7, 14, 30].map((j) => `<option value="${j}" ${j === jours ? 'selected' : ''}>${j} jour${j > 1 ? 's' : ''}</option>`).join('')}</select></label>${noeud != null ? '<button id="mes-tous">Tous les nœuds</button>' : ''}</div>
     <p class="note">Chaque carré de 500 m est un endroit d’où un nœud a réellement été reçu. Couleur = meilleur SNR reçu en direct par une passerelle (vert excellent → rouge limite) ; gris = reçu seulement grâce à des relais. Les nœuds dont la position est volontairement floutée et les messages passés par internet sont écartés.</p>
     ${cal && cal.liaisons != null ? `<p class="note">Le modèle de relief est recalé sur <b>${cal.liaisons}</b> liaisons mesurées (dont les relevés des nœuds mobiles) : pertes d’environnement retenues ${cal.perteEnvironnementDb != null ? cal.perteEnvironnementDb + ' dB' : 'par défaut'}${cal.ecartMedianDb != null ? `, écart médian modèle − mesure ${fmt(cal.ecartMedianDb, 1, ' dB')}` : ''}.</p>` : ''}
@@ -6023,6 +6024,18 @@ async function voirTache(id) {
 
 // ---- Vue zone ----------------------------------------------------------------------------
 // Paramètre ?zone= des API : 1 = département, v = + voisins, r84 = région, rien = toute la France
+// (carte réglée hors de France, etat.config.monde : rien = toute la carte, sans régions françaises ;
+// la valeur interne reste « france » pour les choix déjà retenus dans les navigateurs)
+const libelleToutZone = () => (carteMondeClient() ? 'Toute la carte' : 'France');
+// « Toute la carte » hors de France : cadrage sur tous les nœuds connus (Meshtastic et MeshCore), vue du monde sinon
+function cadrerToutReseau() {
+  const pts = [];
+  const ok = (n) => n && Number.isFinite(n.lat) && Number.isFinite(n.lon) && Math.abs(n.lat) <= 90 && Math.abs(n.lon) <= 180 && !(n.lat === 0 && n.lon === 0);
+  for (const n of etat.noeuds.values()) if (ok(n)) pts.push([n.lat, n.lon]);
+  if (typeof mc !== 'undefined' && mc.noeuds) for (const n of mc.noeuds.values()) if (ok(n)) pts.push([n.lat, n.lon]);
+  if (pts.length) carte.fitBounds(L.latLngBounds(pts), { padding: [20, 20], maxZoom: 11 });
+  else carte.setView([20, 0], 2);
+}
 const paramZone = () => (etat.zoneMode === 'voisins' ? 'v' : /^r\d{2}$/.test(etat.zoneMode) ? etat.zoneMode : etat.zone ? '1' : '');
 const regionChoisie = () => (/^r\d{2}$/.test(etat.zoneMode) ? (etat.config.regions || []).find((r) => 'r' + r.code === etat.zoneMode) : null);
 function appliquerZone(recadrer) {
@@ -6036,7 +6049,8 @@ function appliquerZone(recadrer) {
   etat.config.zone = etat.zoneMode === 'voisins' ? v.bbox : reg ? reg.bbox : etat.config.zoneDep;
   try { localStorage.setItem('gaulix_zone', etat.zoneMode); } catch { /* stockage indisponible */ }
   const b = $('#sel-zone');
-  // Régions de France, une seule fois
+  // Régions de France, une seule fois (retirées si la carte passe hors de France sans rechargement)
+  { const og = b.querySelector('optgroup'); if (og && !(etat.config.regions || []).length) og.remove(); }
   if (!b.querySelector('optgroup') && (etat.config.regions || []).length) {
     b.insertAdjacentHTML('beforeend', `<optgroup label="Régions">${etat.config.regions.map((r) => `<option value="r${r.code}">${esc(r.nom)}</option>`).join('')}</optgroup>`);
   }
@@ -6045,12 +6059,16 @@ function appliquerZone(recadrer) {
   b.options[1].textContent = `${nom} + voisins`;
   b.options[1].title = v ? v.departements.map((d) => `${d.code} ${d.nom}`).join(', ') : '';
   b.options[1].hidden = !v;
+  b.options[2].textContent = libelleToutZone();
+  b.options[2].title = carteMondeClient() ? 'Tous les nœuds connus de la carte, où qu’ils soient' : '';
   b.value = etat.zoneMode;
-  b.title = etat.zoneMode === 'voisins' && v ? `${nom} et départements voisins : ${v.departements.map((d) => d.nom).join(', ')}` : reg ? `Région ${reg.nom}` : 'Secteur affiché : votre département, avec ses voisins, une région ou toute la France';
+  b.title = etat.zoneMode === 'voisins' && v ? `${nom} et départements voisins : ${v.departements.map((d) => d.nom).join(', ')}` : reg ? `Région ${reg.nom}`
+    : carteMondeClient() ? 'Secteur affiché : la zone de la carte ou toute la carte' : 'Secteur affiché : votre département, avec ses voisins, une région ou toute la France';
   b.classList.toggle('actif', etat.zone);
   if (recadrer) {
     const z = etat.config.zone;
     if (etat.zone) carte.fitBounds([[z[0], z[1]], [z[2], z[3]]], { padding: [20, 20] });
+    else if (carteMondeClient()) cadrerToutReseau();
     else carte.setView([46.6, 2.5], 6);
   }
   dessinerNoeuds();

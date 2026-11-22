@@ -24,7 +24,7 @@ function distanceKm(a, b) {
   return 12742 * Math.asin(Math.sqrt(s));
 }
 // Secteur affiché, au choix du visiteur : département de la carte, avec ses voisins, une région, un autre département
-// ou toute la France (?zone=dep|v|r84|d63|france, retenu dans ce navigateur)
+// ou toute la France (?zone=dep|v|r84|d63|france, retenu dans ce navigateur ; hors de France : dep ou france = toute la carte)
 let zoneSel = 'dep', departements = [];
 const regionSel = () => (/^r\d{2}$/.test(zoneSel) ? (config.regions || []).find((r) => 'r' + r.code === zoneSel) : null);
 const depSel = () => (/^d(\d{2}|2A|2B)$/.test(zoneSel) ? departements.find((d) => 'd' + d.code === zoneSel) : null);
@@ -35,8 +35,14 @@ function bboxZone() {
   const d = depSel(); if (d) return d.bbox;
   return config.zoneDep || config.zone;
 }
+// Carte réglée hors de France (config.monde) : ni régions ni départements français, « Toute la carte » au lieu de
+// « France entière » (même valeur « france », pour les liens ?zone=france et les choix déjà retenus)
+const nomTout = () => (config.monde ? 'Toute la carte' : 'France');
+// Choix connu de cette carte ? Sinon (région ou département français sur une carte hors de France, code périmé) :
+// la zone de la carte
+const zoneValide = () => zoneSel === 'dep' || zoneSel === 'france' || (zoneSel === 'v' && !!config.zoneVoisins) || !!regionSel() || !!depSel();
 function nomZone() {
-  if (zoneSel === 'france') return 'France';
+  if (zoneSel === 'france') return nomTout();
   if (zoneSel === 'v' && config.zoneVoisins) return `${config.zoneNom} et voisins`;
   const r = regionSel(); if (r) return r.nom;
   const d = depSel(); if (d) return d.nom;
@@ -63,9 +69,9 @@ function onde(p, couleur) {
 async function demarrer() {
   config = await (await fetch('/api/config')).json();
   config.zoneDep = config.zone;
-  try { departements = await (await fetch('/api/departements')).json(); } catch { departements = []; }
+  if (!config.monde) { try { departements = await (await fetch('/api/departements')).json(); } catch { departements = []; } }
   { let z = params.get('zone'); try { if (!z) z = localStorage.getItem('publique_zone'); } catch { /* indisponible */ } if (z) zoneSel = z; }
-  if (!bboxZone() && zoneSel !== 'france') zoneSel = 'dep';
+  if (!zoneValide() || (!bboxZone() && zoneSel !== 'france')) zoneSel = 'dep';
   installerZone();
   majTitre();
   // Lien vers la carte complète : seulement pour un administrateur connecté (la carte publique sert à consulter)
@@ -98,6 +104,8 @@ async function demarrer() {
   changerVue(vue, true);
 
   await Promise.all([rafraichirMt(), config.meshcore ? rafraichirMc() : null]);
+  // Toute la carte hors de France : recadrage une fois les nœuds connus (avant : vue du monde)
+  if (config.monde && zoneSel === 'france') recadrer();
   setInterval(rafraichirMt, 60000);
   rafraichirSignalements(); setInterval(rafraichirSignalements, 60000);
   if (config.meshcore) setInterval(rafraichirMc, 90000);
@@ -316,15 +324,27 @@ function majTitre() {
 const libZone = () => (depSel() && depSel().code !== depCarte() ? `du département (${depSel().nom})` : config.departement && config.zoneNom && config.departement.nom && config.zoneNom !== config.departement.nom ? `de la zone ${config.zoneNom}` : 'du département');
 function recadrer() {
   const z = bboxZone();
-  if (z) carte.fitBounds([[z[0], z[1]], [z[2], z[3]]], { padding: [10, 10] }); else carte.setView([46.6, 2.5], 6);
+  if (z) carte.fitBounds([[z[0], z[1]], [z[2], z[3]]], { padding: [10, 10] });
+  else if (config.monde) cadrerTout();
+  else carte.setView([46.6, 2.5], 6);
+}
+// « Toute la carte » hors de France : tous les nœuds connus (Meshtastic et MeshCore), vue du monde s'il n'y en a pas
+function cadrerTout() {
+  const pts = [];
+  const ok = (n) => n && Number.isFinite(n.lat) && Number.isFinite(n.lon) && Math.abs(n.lat) <= 90 && Math.abs(n.lon) <= 180 && !(n.lat === 0 && n.lon === 0);
+  for (const n of etat.noeuds.values()) if (ok(n)) pts.push([n.lat, n.lon]);
+  for (const n of mcp.noeuds.values()) if (ok(n)) pts.push([n.lat, n.lon]);
+  if (pts.length) carte.fitBounds(L.latLngBounds(pts), { padding: [10, 10], maxZoom: 11 });
+  else carte.setView([20, 0], 2);
 }
 function installerZone() {
   const sel = document.getElementById('choix-zone');
   if (!sel) return;
   const o = (v, t) => `<option value="${v}">${esc(t)}</option>`;
-  sel.innerHTML = o('dep', config.zoneNom || 'Département de la carte') + (config.zoneVoisins ? o('v', `${config.zoneNom} + voisins`) : '') + o('france', 'France entière')
+  sel.innerHTML = o('dep', config.zoneNom || 'Département de la carte') + (config.zoneVoisins ? o('v', `${config.zoneNom} + voisins`) : '') + o('france', config.monde ? 'Toute la carte' : 'France entière')
     + ((config.regions || []).length ? `<optgroup label="Régions">${config.regions.map((r) => o('r' + r.code, r.nom)).join('')}</optgroup>` : '')
     + (departements.length ? `<optgroup label="Départements">${departements.map((d) => o('d' + d.code, `${d.code} · ${d.nom}`)).join('')}</optgroup>` : '');
+  if (config.monde) sel.title = 'Secteur affiché : la zone de la carte ou toute la carte';
   sel.value = zoneSel;
   sel.onchange = () => {
     zoneSel = sel.value;
@@ -345,10 +365,10 @@ function majBoutonsCouv() {
     if (b.dataset.titre == null) b.dataset.titre = b.title;
     const possible = id === 'b-point' ? pointPossible() : ok;
     b.disabled = !possible;
-    b.title = possible ? b.dataset.titre : franceOuverte() ? 'Choisissez un département pour ce calcul' : `Calculs de couverture disponibles sur ${config.zoneNom || 'le département de la carte'}`;
+    b.title = possible ? b.dataset.titre : franceOuverte() && !config.monde ? 'Choisissez un département pour ce calcul' : `Calculs de couverture disponibles sur ${config.zoneNom || 'le département de la carte'}`;
   }
   const n = document.getElementById('note-couv');
-  if (n) { n.hidden = ok; n.textContent = franceOuverte() ? 'Couverture et emplacements de relais : choisissez un département (la couverture d’un point marche partout).' : `Couverture et emplacements de relais : sur ${config.zoneNom || 'le département de la carte'} seulement.`; }
+  if (n) { n.hidden = ok; n.textContent = config.monde ? (franceOuverte() ? `Couverture et emplacements de relais : sur ${config.zoneNom || 'la zone de la carte'} seulement (la couverture d’un point marche partout).` : `Couverture et emplacements de relais : sur ${config.zoneNom || 'la zone de la carte'} seulement.`) : franceOuverte() ? 'Couverture et emplacements de relais : choisissez un département (la couverture d’un point marche partout).' : `Couverture et emplacements de relais : sur ${config.zoneNom || 'le département de la carte'} seulement.`; }
 }
 
 function changerVue(v, sansCharger) {

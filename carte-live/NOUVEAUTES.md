@@ -2,6 +2,14 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.7.1
+
+### 🌍 Area selector on a map outside France
+- On a map set to a **world square** (e.g. “40°N–41°N · 75°W–74°W”), the area menu at the top no longer offers **France** and the **13 French regions**. It now offers the map area and **Whole map**.
+- **Whole map** frames **every node the map knows** (Meshtastic and MeshCore, nodes announcing 0, 0 ignored), or a world view when there is none yet, instead of jumping to France.
+- A French region remembered by the browser or given in a link (`?zone=r84`) falls back to the map area. The public map follows the same rule: no regions or French departments, **Whole map** instead of “Whole of France”.
+- A World edition map set to a **French department** is unchanged: regions, neighbours and France are still there.
+
 ## 1.7.0
 
 ### 🖱️ The Tools menu buttons work again

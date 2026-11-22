@@ -1841,6 +1841,118 @@ async function essaiPagesPubliques(navig) {
   }
 }
 
+// Sélecteur de secteur (#sel-zone) : une carte réglée sur un carré du monde (hors de France) ne propose ni « France »
+// ni les régions françaises ; « Toute la carte » cadre sur les nœuds connus (vue du monde s'il n'y en a aucun).
+// Une carte réglée sur un département français garde régions et France. Un second serveur d'essai, réglé sur
+// MN40W075 (New Jersey), est lancé pour l'occasion puis arrêté.
+async function essaiZoneMonde(navig, cookie) {
+  console.log('Secteur affiché : carte française et carte hors de France');
+  // 1) Carte du département 43 : régions et France inchangées
+  const cfgFr = await (await fetch(BASE + '/api/config', { headers: { Cookie: `${cookie.name}=${cookie.value}` } })).json();
+  if (cfgFr.monde === false && (cfgFr.regions || []).length === 13 && cfgFr.zoneVoisins) ok('département français : 13 régions, voisins, monde = faux');
+  else ko('département français : ' + JSON.stringify({ monde: cfgFr.monde, regions: (cfgFr.regions || []).length, voisins: !!cfgFr.zoneVoisins }));
+  {
+    const ctx = await navig.newContext({ viewport: { width: 1280, height: 800 }, locale: 'fr-FR' });
+    await ctx.addCookies([cookie]);
+    await ctx.addInitScript(() => { try { localStorage.setItem('gaulix_visite', 'true'); localStorage.setItem('gaulix_langue', 'fr'); localStorage.setItem('gaulix_zone', 'r84'); } catch { /* */ } });
+    const { page, erreurs } = await ouvrir(ctx, '/');
+    const fr = await page.evaluate(() => { const b = document.querySelector('#sel-zone'); return { valeur: b.value, france: b.querySelector('option[value="france"]').textContent, regions: b.querySelectorAll('optgroup option').length }; });
+    if (fr.valeur === 'r84' && fr.france === 'France' && fr.regions === 13) ok('département français : région retenue, option « France » et 13 régions');
+    else ko('département français, sélecteur : ' + JSON.stringify(fr));
+    bilanErreurs(erreurs, 'secteur (département français)');
+    await ctx.close();
+  }
+  // 2) Carte réglée sur un carré du monde
+  const portM = PORT + 20, baseM = `http://127.0.0.1:${portM}`;
+  const donneesM = fs.mkdtempSync(path.join(os.tmpdir(), 'carte-essai-monde-'));
+  const envM = { ...process.env };
+  for (const k of ['ZONE_NOM', 'ZONE_BBOX', 'CARTE_CENTRE', 'CARTE_ZOOM']) delete envM[k]; // zone tirée du carré seul
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], {
+    env: { ...envM, PORT: String(portM), FICHIER_BASE: path.join(donneesM, 'carte-live.db'), MQTT_URL: 'mqtt://127.0.0.1:1', DEPARTEMENT: 'MN40W075', MESHCORE: 'oui', ADMIN_MOT_DE_PASSE: '', AGENTS_PORT: String(portM + 5), SMTP_HOTE: 'fichier', STATS_PAYS: 'non', RELIEF_MONDE_ERDDAP: 'http://127.0.0.1:1/erddap' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const log = fs.createWriteStream(path.join(sorties, 'serveur-monde.log'));
+  srv.stdout.pipe(log); srv.stderr.pipe(log);
+  try {
+    let pret = false;
+    for (let k = 0; k < 60 && !pret; k++) { try { pret = (await fetch(baseM + '/api/installation')).ok; } catch { /* pas encore prêt */ } if (!pret) await new Promise((r) => setTimeout(r, 500)); }
+    if (!pret) { ko('carte hors de France : le serveur d’essai ne répond pas (tests/resultats/serveur-monde.log)'); return; }
+    const r = await fetch(baseM + '/api/installation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ compte: ADMIN }) });
+    const [nomC, valC] = ((r.headers.get('set-cookie') || '').split(';')[0]).split('=');
+    if (!r.ok || !valC) { ko('carte hors de France : installation ' + r.status); return; }
+    const cookieM = { name: nomC, value: valC, domain: '127.0.0.1', path: '/' };
+    const cfg = await (await fetch(baseM + '/api/config', { headers: { Cookie: `${nomC}=${valC}` } })).json();
+    if (cfg.monde === true && Array.isArray(cfg.regions) && cfg.regions.length === 0 && !cfg.zoneVoisins) ok('carte hors de France : monde = vrai, aucune région française, pas de « + voisins »');
+    else ko('carte hors de France, config : ' + JSON.stringify({ monde: cfg.monde, regions: (cfg.regions || []).length, voisins: cfg.zoneVoisins }));
+    // Une région demandée par un lien ou un navigateur ne fait pas d'erreur
+    const st = (await fetch(baseM + '/api/topologie?zone=r84')).status;
+    if (st === 200) ok('carte hors de France : ?zone=r84 accepté (zone de la carte)'); else ko('carte hors de France : ?zone=r84 → HTTP ' + st);
+
+    for (const [langue, tout] of [['fr', 'Toute la carte'], ['en', 'Whole map']]) {
+      const ctx = await navig.newContext({ viewport: { width: 1280, height: 800 }, locale: langue === 'fr' ? 'fr-FR' : 'en-GB' });
+      await ctx.addCookies([cookieM]);
+      await ctx.addInitScript((l) => { try { localStorage.setItem('gaulix_visite', 'true'); localStorage.setItem('gaulix_langue', l); if (!sessionStorage.getItem('essai_zone')) { localStorage.setItem('gaulix_zone', 'r84'); localStorage.setItem('publique_zone', 'r84'); sessionStorage.setItem('essai_zone', '1'); } } catch { /* */ } }, langue);
+      const page = await ctx.newPage();
+      const erreurs = [];
+      page.on('pageerror', (e) => erreurs.push('JS : ' + e.message));
+      page.on('response', (x) => { if (x.status() >= 500 && x.url().startsWith(baseM)) erreurs.push(`HTTP ${x.status()} : ${x.url().slice(baseM.length)}`); });
+      await page.goto(baseM + '/', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(2500);
+      const s = await page.evaluate(() => {
+        const b = document.querySelector('#sel-zone');
+        return { valeur: b.value, memo: localStorage.getItem('gaulix_zone'), groupes: b.querySelectorAll('optgroup').length, textes: [...b.options].filter((o) => !o.hidden).map((o) => o.textContent), voisinsCache: b.options[1].hidden, titre: b.title };
+      });
+      if (s.valeur === 'dep' && s.memo === 'dep') ok(`${langue} : région française retenue → zone de la carte`); else ko(`${langue} : choix « r84 » retenu : ` + JSON.stringify(s));
+      if (!s.groupes && s.voisinsCache && s.textes.length === 2 && s.textes[1] === tout && !s.textes.some((t) => /France|Auvergne|Bretagne/.test(t))) ok(`${langue} : sélecteur = zone de la carte et « ${tout} », ni France ni régions`);
+      else ko(`${langue} : sélecteur : ` + JSON.stringify(s));
+      if (!/France/.test(s.titre)) ok(`${langue} : infobulle sans « France »`); else ko(`${langue} : infobulle : ` + s.titre);
+      if (langue === 'fr') {
+        // Aucun nœud connu : vue du monde (et non la France)
+        await page.selectOption('#sel-zone', 'france');
+        await page.waitForTimeout(800);
+        const v0 = await page.evaluate(() => ({ z: carte.getZoom(), c: carte.getCenter() }));
+        if (v0.z <= 3 && Math.abs(v0.c.lat - 46.6) > 5) ok('toute la carte sans nœud : vue du monde'); else ko('toute la carte sans nœud : ' + JSON.stringify(v0));
+        // Deux nœuds connus (New Jersey et New York) : cadrage sur eux
+        await page.selectOption('#sel-zone', 'dep');
+        await page.evaluate(() => {
+          etat.noeuds.set(0x11111111, { num: 0x11111111, id: '!11111111', lat: 40.5, lon: -74.5, nomLong: 'Essai NJ', nomCourt: 'NJ', statut: 'actif', dernierVu: Date.now() });
+          etat.noeuds.set(0x22222222, { num: 0x22222222, id: '!22222222', lat: 40.75, lon: -73.95, nomLong: 'Essai NY', nomCourt: 'NY', statut: 'actif', dernierVu: Date.now() });
+          etat.noeuds.set(0x33333333, { num: 0x33333333, id: '!33333333', lat: 0, lon: 0, nomLong: 'Sans position', nomCourt: '0', statut: 'actif', dernierVu: Date.now() });
+        });
+        await page.selectOption('#sel-zone', 'france');
+        await page.waitForTimeout(800);
+        const v1 = await page.evaluate(() => { const b = carte.getBounds(); return { z: carte.getZoom(), nj: b.contains([40.5, -74.5]), ny: b.contains([40.75, -73.95]), afrique: b.contains([0, 0]), memo: localStorage.getItem('gaulix_zone') }; });
+        if (v1.nj && v1.ny && !v1.afrique && v1.z >= 7 && v1.memo === 'france') ok('toute la carte : cadrage sur les nœuds connus (0, 0 ignoré)'); else ko('toute la carte, cadrage : ' + JSON.stringify(v1));
+        await capture(page, 'secteur-monde');
+        // Téléphone : le sélecteur reste lisible
+        await page.setViewportSize({ width: 390, height: 800 });
+        await page.waitForTimeout(500);
+        await capture(page, 'secteur-monde-telephone');
+        // Carte publique
+        const pub = await ctx.newPage();
+        pub.on('pageerror', (e) => erreurs.push('JS (publique) : ' + e.message));
+        await pub.goto(baseM + '/publique.html', { waitUntil: 'domcontentloaded' });
+        await pub.waitForTimeout(2500);
+        const p = await pub.evaluate(() => { const b = document.querySelector('#choix-zone'); return { valeur: b.value, groupes: b.querySelectorAll('optgroup').length, textes: [...b.options].map((o) => o.textContent), titre: b.title }; });
+        if (p.valeur === 'dep' && !p.groupes && p.textes.length === 2 && p.textes[1] === 'Toute la carte' && !/France/.test(p.titre)) ok('carte publique : zone de la carte ou « Toute la carte », sans régions ni départements');
+        else ko('carte publique : ' + JSON.stringify(p));
+        await pub.selectOption('#choix-zone', 'france');
+        await pub.waitForTimeout(800);
+        const pv = await pub.evaluate(() => ({ z: carte.getZoom(), c: carte.getCenter(), titre: document.getElementById('titre').textContent }));
+        if (pv.z <= 3 && Math.abs(pv.c.lat - 46.6) > 5) ok('carte publique : toute la carte sans nœud → vue du monde'); else ko('carte publique, cadrage : ' + JSON.stringify(pv));
+        await capture(pub, 'secteur-monde-publique');
+        await pub.close();
+      }
+      if (erreurs.length) ko(`${langue} : ${erreurs.length} erreur(s)\n      ` + [...new Set(erreurs)].slice(0, 8).join('\n      ')); else ok(`secteur hors de France (${langue}) : aucune erreur JavaScript`);
+      await ctx.close();
+    }
+  } finally {
+    const fin = new Promise((r) => { srv.once('exit', r); setTimeout(r, 5000); });
+    srv.kill(); await fin;
+    try { fs.rmSync(donneesM, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* */ }
+  }
+}
+
 // Opérations récentes : la carte d'une opération doit dire CE QUI A ÉTÉ ENVOYÉ au relais (valeurs et unités),
 // rester lisible sur téléphone, et ne jamais laisser voir une clé de canal.
 // Les opérations d'essai sont mises en forme par le vrai module du serveur : l'écran et le serveur ne peuvent pas divergir.
@@ -2136,6 +2248,7 @@ async function essaiSuggestionsNoeuds(navig, cookie) {
     await essaiFenetres(navigateur, cookie);
     await essaiConnexionsRepetees(navigateur, cookie);
     await essaiPagesPubliques(navigateur);
+    await essaiZoneMonde(navigateur, cookie);
     await essaiTopologieFiche(navigateur);
     await essaiRapportArchives(navigateur, cookie);
     code = echecs ? 1 : 0;
