@@ -42,6 +42,7 @@ class ClientTuile extends BaseClient {
     let reponse;
     try { reponse = await fetch(this.url, { headers, signal: s }); } catch (e) { throw minuterie.aborted ? new Error(`téléchargement de la tuile trop lent (${DELAI_TELECHARGEMENT_MS / 1000} s)`) : e; }
     return {
+      ok: reponse.ok,
       status: reponse.status,
       getHeader: (n) => reponse.headers.get(n),
       getData: async () => { try { return await reponse.arrayBuffer(); } catch (e) { throw minuterie.aborted ? new Error(`téléchargement de la tuile trop lent (${DELAI_TELECHARGEMENT_MS / 1000} s)`) : e; } },
