@@ -6782,12 +6782,25 @@ async function optionsDepartements(select, code) {
   select.addEventListener('change', async () => {
     if (select.value !== 'choisir-monde') { avant = select.value; return; }
     const c = typeof carte !== 'undefined' ? carte.getCenter() : { lat: 40, lng: -75 };
-    const v = typeof saisir === 'function'
-      ? await saisir('Position du centre de votre réseau (latitude, longitude en degrés décimaux, ex. 40.7, -74.0) :', `${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`)
-      : prompt('Latitude, longitude du centre de votre réseau :', `${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`);
-    const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(v || '');
-    if (!m || Math.abs(Number(m[1])) > 85 || Math.abs(Number(m[2])) > 180) { select.value = avant; return; }
-    const k = codeMonde(Number(m[1]), Number(m[2]));
+    // « 52.12, 4.43 », « 52.12 4.43 » ou, avec la virgule décimale, « 52,12; 4,43 » / « 52,12 4,43 ».
+    // Saisie non reconnue : la question est reposée avec la saisie, au lieu de revenir en arrière sans rien dire.
+    const lire = (v) => {
+      const s = String(v || '').trim();
+      const m = /^(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(s) || /^(-?\d{1,2}(?:,\d+)?)\s*[; ]\s*(-?\d{1,3}(?:,\d+)?)$/.exec(s);
+      if (!m) return null;
+      const lat = Number(m[1].replace(',', '.')), lon = Number(m[2].replace(',', '.'));
+      return Math.abs(lat) <= 85 && Math.abs(lon) <= 180 ? [lat, lon] : null;
+    };
+    let v = `${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`, pos = null;
+    for (let essai = 0; essai < 3 && !pos; essai++) {
+      v = typeof saisir === 'function'
+        ? await saisir('Position du centre de votre réseau (latitude, longitude en degrés décimaux, ex. 40.7, -74.0) :', v)
+        : prompt('Latitude, longitude du centre de votre réseau :', v);
+      if (!v) break; // annulé
+      pos = lire(v);
+    }
+    if (!pos) { select.value = avant; return; }
+    const k = codeMonde(pos[0], pos[1]);
     let o = [...select.options].find((x) => x.value === k);
     if (!o) { o = new Option('🌍 ' + nomMonde(k), k); select.querySelector('optgroup').prepend(o); }
     select.value = avant = k;
