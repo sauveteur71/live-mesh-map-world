@@ -2,6 +2,35 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.11.0
+
+### 📨 Winlink: live status over Pat's WebSocket
+- The Winlink status badge on the radio group page now updates **live**, no more reloading the tab: the map keeps a WebSocket connection to Pat (the Winlink client) and pushes a status event to the browser the moment a connection starts, ends, or new mail arrives. Only the status is pushed (connected/dialing/remote station) — never a message's subject or body, which stays behind the existing permission check.
+- Sent only to accounts allowed to see that station: members of the radio group that owns it, or map administrators.
+- If Pat is not configured, or is unreachable, this stays silent: no extra log noise, no failed reconnect attempts.
+
+### 🌍 English translations complete
+- The ~650 texts introduced by the Secours spaces and radio-group modules (previous two versions) are now translated in `i18n-en.json`. The other 13 languages still fall back to English for anything they don't have their own translation for, as before.
+
+## 1.10.0
+
+### 📻 Radio groups (formerly ADRASEC), direction finding and Winlink
+- Ported from the France edition's ADRASEC section (a French civil-defense body tied to a département) and generalized into a free-form **radio group**: an administrator creates a group with any name and an optional free-text area, and an operator can belong to several groups at once, each with its own teams and channels.
+- **Direction finding** (beacon search) routes readings to the right group the same way as before — only the membership key changed, from a fixed French département to a free-form group code (1–8 letters/digits/hyphens).
+- **Winlink mailbox** (via the Pat client) ported alongside: read mail, draft and send messages, launch a radio or Internet session, and look up nearby RMS gateways — restricted to the group's members, with message composing and radio sessions limited to licensed operators.
+- "President" renamed to "**Coordinator**" throughout; a "Radio group" checkbox and coordinator role were added to account management.
+- Integrated into the Operations hub ("Radio group" link).
+- Tested: syntax-checked, server started against a test setup (routes respond). Not yet tested: direction finding with a real field reading, a real Winlink mailbox, or a physical phone.
+
+## 1.9.0
+
+### 🆘 Secours spaces: radio coverage for an event or a local emergency plan
+- Ported from the France edition (`secours.js`) and generalized: separate, independent spaces (their own file, accounts and cookie), each covering the radio side of an event (festival, race, gathering) or of a local emergency plan.
+- Unchanged mechanics: pinned incidents, teams tracked live, a running log, INTER/FIN/DISPO radio roll-call, assembly points, an end-of-mission report, and several organizations sharing one space.
+- Generalized wording: the France-specific terms this module used (DPS, PCS) are replaced with neutral, country-agnostic language; organizations such as the Red Cross stay configurable examples, never a fixed list.
+- Integrated into the Operations hub ("Secours spaces" link, shown to administrators who create spaces).
+- Tested: syntax-checked, server started against a test setup (routes respond). Not yet tested: real field use, a physical phone.
+
 ## 1.8.0
 
 ### 🚨 "Operations" hub: emergency mode and alert zones in one place
