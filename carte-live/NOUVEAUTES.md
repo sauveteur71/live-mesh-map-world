@@ -2,6 +2,22 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.8.0
+
+### 🚨 "Operations" hub: emergency mode and alert zones in one place
+- **Emergency mode** and **Alert zones** are no longer two entries lost among 25 others in the Tools menu. They now have their own **"Operations"** tab above the panel, shown only to the accounts that can use at least one of them, with a short explanation under each tile instead of a bare button.
+- A **breadcrumb** ("Section › Tab") now sits above the tabs so you always know where you are, and lets you jump back to the section with one click.
+- Every Tools menu entry now carries its own display level (simple / operator / expert) directly in the page, instead of a separate list to keep in sync in the code: adding a new tool entry with the right level is now a one-line change.
+
+### 🗺️ Coverage plans: maximum altitude and combined site selection
+- The department plan, the budget plan and a hand-drawn zone plan can now exclude sites **above a chosen altitude** — useful where the highest points are bare rock or exposed ridgeline, often harder to reach and with nothing to bolt a mast to.
+- In any list of proposed sites (plan, budget plan, road sites, best sites), each site now has an **"Add to my selection"** checkbox. Check several (10 at most) and press **"Coverage of my selection"** to see their combined coverage, then **"Back to the list"** to return to the exact list you started from, checkboxes included.
+- The four collapsible blocks of the Coverage tab (plan, budget plan, road sites, relocate relays) are now foldable, with the plan open by default; your choices are remembered on this device so the tab doesn't need endless scrolling.
+
+### 📝 Field hints and in-app dialogs, shared across pages
+- Fields for a node number, a ham callsign, an MQTT broker address, a channel key, an e-mail address and more now show a short **inline hint** (what's expected, an example, and whether what you typed matches) the moment you focus them, instead of relying only on a rejected form after the fact.
+- The confirmation and text-entry dialogs, and the Markdown renderer used for the in-app help, now live in one shared file (`commun.js`) so that separate pages (not just the main map) can reuse them without duplicating the code.
+
 ## 1.7.1
 
 ### 🖥️ 64-bit system checked at install

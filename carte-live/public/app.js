@@ -128,7 +128,7 @@ function blocCoords(lat, lon, opts = {}) {
       <a href="https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lon.toFixed(6)}" target="_blank" rel="noopener">Google Maps</a>
       <a href="geo:${lat.toFixed(6)},${lon.toFixed(6)}">GPS du téléphone</a></div>
     ${opts.approx ? '<div class="note">Position publique arrondie (≈ 100 m) : connectez-vous pour la position exacte.</div>' : ''}
-    ${opts.couv ? `<div class="actions-prop"><button class="mini principal" data-couv-pt="${lat},${lon}" data-couv-nom="${esc(opts.couv.nom || '')}" data-couv-h="${opts.couv.h || 6}" title="Couverture radio d’un relais posé ici (antenne à ${opts.couv.h || 6} m)">📡 Couverture de ce site</button></div>` : ''}
+    ${opts.couv ? `<div class="actions-prop"><button class="mini principal" data-couv-pt="${lat},${lon}" data-couv-nom="${esc(opts.couv.nom || '')}" data-couv-h="${opts.couv.h || 6}" title="Couverture radio d’un relais posé ici (antenne à ${opts.couv.h || 6} m)">📡 Couverture de ce site</button><label class="case choix-site" title="Cochez plusieurs sites pour voir leur couverture cumulée (10 au plus)"><input type="checkbox" data-choix-site="${lat},${lon}" data-choix-nom="${esc(opts.couv.nom || '')}" data-choix-h="${opts.couv.h || 6}"> Ajouter à ma sélection</label></div>` : ''}
   </div>`;
 }
 // « Couverture de ce site » dans une liste de propositions : la vue précédente (plan, classement) reste disponible
@@ -1840,6 +1840,7 @@ document.addEventListener('click', (ev) => {
 const sansAccent = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function surligner(el) {
   if (!el) return;
+  for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true; // bloc replié : on l'ouvre
   el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   el.classList.add('flash-recherche');
   setTimeout(() => el.classList.remove('flash-recherche'), 2600);
@@ -1935,8 +1936,14 @@ function indexReglages() {
       // Bouton ou lien du menu Outils : lancé directement (encore dans le geste de l'utilisateur, ce qu'exigent l'USB
       // et le Bluetooth) ; case à cocher d'un menu de couches : le menu s'ouvre et la case est montrée
       const lancer = d.classList.contains('menu-outils') && (el.tagName === 'BUTTON' || el.tagName === 'A');
-      ajouter(txt, nomMenu.replace('▾', '').trim(), el.title || '', lancer ? () => { d.open = false; el.click(); } : () => { d.open = true; surligner(el); });
+      ajouter(txt, nomMenu.replace('▾', '').trim(), `${el.title || ''} ${el.dataset.chercher || ''}`, lancer ? () => { d.open = false; el.click(); } : () => { d.open = true; surligner(el); });
     });
+  });
+  // Mode urgence, Secteurs d'alerte, Espaces Secours, section radioamateur : sortis du menu Outils, repris en
+  // tuiles dans la rubrique Opérations ; toujours cherchables depuis #operations-sources.
+  document.querySelectorAll('#operations-sources .bascule').forEach((el) => {
+    if (el.hidden) return;
+    ajouter(el.textContent, 'Opérations', `${el.title || ''} ${el.dataset.chercher || ''}`, () => el.click());
   });
   return l;
 }
@@ -3706,7 +3713,7 @@ async function couvertureMulti(sites) {
   $('#fiche-contenu').innerHTML = `<h2>Couverture de ${sites.length} site${sites.length > 1 ? 's' : ''}</h2><div class="alerte info-lecture"><span class="sablier"></span> Calcul de la couverture cumulée…</div>`;
   const q = sites.map((x) => `${x.lat.toFixed(5)},${x.lon.toFixed(5)},${x.h}`).join(';');
   let r;
-  try { r = await api(`/api/relief/couverture-multi?pts=${q}${etat.vueReseau === 'meshcore' ? '&preset=MESHCORE_FR' : ''}`); } catch (e) { $('#fiche-contenu').innerHTML = `<div class="vide">${esc(e.message)}</div>`; return; }
+  try { r = await api(`/api/relief/couverture-multi?pts=${q}${etat.vueReseau === 'meshcore' ? '&preset=MESHCORE_FR' : ''}`); } catch (e) { $('#fiche-contenu').innerHTML = `<div class="vide">${esc(e.message)}</div>${etat.retourListeSites ? '<div class="actions-prop"><button id="retour-liste-sites">↩ Revenir à la liste</button></div>' : ''}`; const br = $('#retour-liste-sites'); if (br) br.onclick = revenirListeSites; return; }
   if (etat.coucheCouverture) etat.coucheCouverture.remove();
   const e = r.emprise, g = L.layerGroup();
   L.imageOverlay(r.image, [[e.sud, e.ouest], [e.nord, e.est]], { opacity: 0.75, pane: 'couverture', className: 'pixelise' }).addTo(g);
@@ -3723,14 +3730,54 @@ async function couvertureMulti(sites) {
       <div class="mesure"><span>Sites</span><b>${sites.length}</b></div>
     </div>
     <div class="liste-cibles">${sites.map((x, i) => `<div class="ligne-cible"><span class="cible-multi petit"><span>${i + 1}</span></span><span>${esc(x.nom || 'Site')} <small class="mono">${x.lat.toFixed(4)}, ${x.lon.toFixed(4)}</small><br><small>antenne <input class="mini-h" data-h="${i}" type="number" min="0.5" max="80" step="0.5" value="${x.h}"> m · ${r.sites[i].km2} km² seul · <b>${r.sites[i].propreKm2} km²</b> qu’il est seul à couvrir dans le département</small></span>${sites.length > 1 ? `<button class="mini" data-retirer-site="${i}" title="Retirer ce site">✕</button>` : ''}</div>`).join('')}</div>
-    <div class="actions-prop">${sites.length < 10 ? '<button id="ajout-site-multi" class="principal">＋ Ajouter un site</button>' : ''}<button id="recalc-multi">Recalculer</button><button id="gpx-couv-multi">Télécharger (GPX)</button></div>
+    <div class="actions-prop">${etat.retourListeSites ? '<button id="retour-liste-sites" title="Revenir à la liste des sites proposés, vos cases restent cochées">↩ Revenir à la liste</button>' : ''}${sites.length < 10 ? '<button id="ajout-site-multi" class="principal">＋ Ajouter un site</button>' : ''}<button id="recalc-multi">Recalculer</button><button id="gpx-couv-multi">Télécharger (GPX)</button></div>
     <p class="note">Cliquez « Ajouter un site » puis un point de la carte (ou clic droit → « Ajouter à la couverture totale »). Un site qui couvre peu de surface à lui seul fait doublon avec les autres. Turquoise : ≥ 10 dB de marge · jaune : 0 à 10 dB · orange : en limite.</p>`;
   const ba = $('#ajout-site-multi'); if (ba) ba.onclick = () => basculerMode('couv-plus');
+  const brl = $('#retour-liste-sites'); if (brl) brl.onclick = revenirListeSites;
   $('#recalc-multi').onclick = () => { $('#fiche-contenu').querySelectorAll('[data-h]').forEach((el) => { sites[Number(el.dataset.h)].h = Number(el.value) || 6; }); couvertureMulti(sites); };
   $('#fiche-contenu').querySelectorAll('[data-retirer-site]').forEach((b) => (b.onclick = () => couvertureMulti(sites.filter((_, i) => i !== Number(b.dataset.retirerSite)))));
   suivreApprox(r, () => etat.coucheCouverture === g, () => couvertureMulti(sites));
   $('#gpx-couv-multi').onclick = () => telechargerGpx('couverture-sites.gpx', sites.map((x, i) => ({ lat: x.lat, lon: x.lon, alt: r.sites[i].sol, nom: `${i + 1} - ${x.nom || 'Site'}`, desc: `Antenne ${x.h} m, ${r.sites[i].km2} km²` })));
 }
+
+// ---- Sites cochés dans une liste de propositions (plan, plan à budget, sites routiers, meilleurs sites…) ---------
+// Chaque proposition a une case « Ajouter à ma sélection » ; une barre en bas de la fiche donne la couverture
+// cumulée des sites cochés. La liste d'origine (et sa couche sur la carte) est gardée : « ↩ Revenir à la liste ».
+const MAX_SITES_COCHES = 10;
+function majSitesCoches() {
+  const z = $('#fiche-contenu');
+  const cases = [...z.querySelectorAll('[data-choix-site]')], coches = cases.filter((c) => c.checked);
+  for (const c of cases) { c.disabled = !c.checked && coches.length >= MAX_SITES_COCHES; const p = c.closest('.proposition'); if (p) p.classList.toggle('site-coche', c.checked); }
+  let b = z.querySelector('.barre-sites-coches');
+  if (!coches.length) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.className = 'barre-sites-coches'; z.appendChild(b); }
+  b.innerHTML = `<span>${coches.length > 1 ? `${coches.length} sites cochés` : '1 site coché'}${coches.length >= MAX_SITES_COCHES ? ' (maximum)' : ''}</span><button type="button" class="principal" data-voir-coches>📡 Couverture de ma sélection</button><button type="button" data-vider-coches>Tout décocher</button>`;
+  b.querySelector('[data-vider-coches]').onclick = () => { for (const c of cases) c.checked = false; majSitesCoches(); };
+  b.querySelector('[data-voir-coches]').onclick = () => {
+    const sites = coches.map((c) => { const [lat, lon] = c.dataset.choixSite.split(',').map(Number); return { lat, lon, h: Number(c.dataset.choixH) || 6, nom: c.dataset.choixNom || 'Site' }; });
+    // La liste et sa couche sont mises de côté telles quelles (cases cochées et boutons compris)
+    const couche = etat.coucheCouverture;
+    if (couche) { couche.remove(); etat.coucheCouverture = null; }
+    etat.retourListeSites = { noeuds: [...z.childNodes], couche, defilement: z.scrollTop };
+    z.replaceChildren();
+    couvertureMulti(sites);
+  };
+}
+document.addEventListener('change', (e) => { if (e.target.matches && e.target.matches('[data-choix-site]')) majSitesCoches(); });
+function revenirListeSites() {
+  const r = etat.retourListeSites;
+  if (!r) return;
+  etat.retourListeSites = null;
+  if (etat.coucheCouverture) etat.coucheCouverture.remove();
+  etat.coucheCouverture = r.couche || null;
+  if (r.couche) r.couche.addTo(carte);
+  etat.sitesCouv = null;
+  const z = $('#fiche-contenu');
+  z.replaceChildren(...r.noeuds);
+  z.scrollTop = r.defilement || 0;
+  $('#fiche').hidden = false;
+}
+
 function ajouterSiteCouverture(latlng) {
   const lieu = nomLieu(latlng);
   const h = Number($('#relief-hs') ? $('#relief-hs').value : 6) || 6;
@@ -4347,7 +4394,8 @@ async function planZoneDessinee(polys, nom, opts = {}) {
   carte.fitBounds(L.latLngBounds(polys.flat()).pad(0.15), { maxZoom: 13 });
   let r;
   const hs = Number(($('#plan-hs') || {}).value) || 6;
-  try { r = await postJson('/api/relief/plan-zone', { polygones: polys, objectif, max, acces, reseau, realiste, hs }); } catch (e) { z.innerHTML = `<h2>🖊 ${esc(nom)}</h2><div class="vide">${esc(e.message)}</div>`; return; }
+  const altmax = Number(($('#plan-altmax') || {}).value) || null;
+  try { r = await postJson('/api/relief/plan-zone', { polygones: polys, objectif, max, acces, reseau, realiste, hs, altmax }); } catch (e) { z.innerHTML = `<h2>🖊 ${esc(nom)}</h2><div class="vide">${esc(e.message)}</div>`; return; }
   const e2 = r.emprise;
   L.imageOverlay(r.image, [[e2.sud, e2.ouest], [e2.nord, e2.est]], { opacity: 0.75, pane: 'couverture', className: 'pixelise' }).addTo(g);
   r.sites.forEach((x) => L.marker([x.lat, x.lon], { icon: L.divIcon({ className: 'relais-a-installer', html: `<div class="epingle"><b>${x.rang}</b></div>`, iconSize: [34, 44], iconAnchor: [17, 42] }), pane: 'traces', zIndexOffset: 900 })
@@ -4357,7 +4405,7 @@ async function planZoneDessinee(polys, nom, opts = {}) {
     .bindTooltip(`<b>${x.rang}${String.fromCharCode(97 + j)} · ${esc(nomSommet(o))}</b> (à la place du site ${x.rang})<br>${o.alt} m${o.commune ? ' · ' + esc(o.commune) : ''}<br>+${o.gainKm2} km² au lieu de +${x.gainKm2} km²${o.acces ? '<br>' + ACCES[o.acces.type].icone + ' ' + ACCES[o.acces.type].nom : ''}`, { className: 'info' }).addTo(g)));
   const nomAcces = { tous: 'tous les points hauts', voiture: 'accessibles en voiture', '4x4': 'accessibles en 4×4 ou voiture', pied: 'accessibles à pied, en 4×4 ou voiture' }[r.filtreAcces];
   z.innerHTML = `<h2>🖊 ${esc(nom)}</h2>
-    <div class="ident">${r.zones > 1 ? r.zones + ' zones · ' : ''}${r.surfaceZoneKm2} km² · objectif ${r.objectifPct} % · au plus ${r.max} sites · ${esc(nomAcces)} · ${r.avecReseau ? `avec le réseau actuel (${r.reseau.length} relais à portée)` : 'sans le réseau actuel'}${r.parametres && r.parametres.hs != null ? ` · antenne des sites <b>${fmt(r.parametres.hs, 1, ' m')} au-dessus du sol</b>` : ''}</div>
+    <div class="ident">${r.zones > 1 ? r.zones + ' zones · ' : ''}${r.surfaceZoneKm2} km² · objectif ${r.objectifPct} % · au plus ${r.max} sites · ${esc(nomAcces)}${r.altMax != null ? ` · altitude ≤ ${r.altMax} m` : ''} · ${r.avecReseau ? `avec le réseau actuel (${r.reseau.length} relais à portée)` : 'sans le réseau actuel'}${r.parametres && r.parametres.hs != null ? ` · antenne des sites <b>${fmt(r.parametres.hs, 1, ' m')} au-dessus du sol</b>` : ''}</div>
     <div class="parametres compact"><label>Accès des nouveaux relais <select id="zone-acces">${Object.entries({ voiture: '🚗 En voiture', '4x4': '🚙 En 4×4 ou voiture', pied: '🥾 À pied ou mieux', tous: 'Tous les points hauts' }).map(([k, v]) => `<option value="${k}" ${k === r.filtreAcces ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     ${r.filtreAcces !== 'tous' && r.accesEtat && r.accesEtat.faits < r.accesEtat.total ? `<div class="alerte attention">Accès aux sites en cours d’évaluation (OpenStreetMap) : ${r.accesEtat.faits}/${r.accesEtat.total} points. Seuls les sites déjà évalués sont proposés.</div>` : ''}
     ${r.horsReliefKm2 > 2 ? `<div class="alerte attention">${r.horsReliefKm2} km² de la zone sortent du relief chargé (département et ses abords) : ils ne sont pas étudiés.</div>` : ''}
@@ -4384,11 +4432,12 @@ async function planZoneDessinee(polys, nom, opts = {}) {
 async function planDepartement() {
   const objectif = Number($('#plan-objectif').value) || 95, max = Number($('#plan-max').value) || 15;
   const acces = $('#plan-acces').value, reseau = $('#plan-reseau').checked;
+  const altmax = Number(($('#plan-altmax') || {}).value) || '';
   $('#fiche').hidden = false;
   etat.selection = null;
   $('#fiche-contenu').innerHTML = '<h2>Plan de couverture</h2><div class="alerte info-lecture"><span class="sablier"></span> Recherche des sites…</div>';
   let r;
-  try { r = await api(`/api/relief/plan?objectif=${objectif}&max=${max}&acces=${acces}&reseau=${reseau ? 1 : 0}&realiste=${$('#plan-realiste').checked ? 1 : 0}`); } catch (e) { $('#fiche-contenu').innerHTML = `<h2>Plan de couverture</h2><div class="vide">${esc(e.message)}</div>`; return; }
+  try { r = await api(`/api/relief/plan?objectif=${objectif}&max=${max}&acces=${acces}&reseau=${reseau ? 1 : 0}&realiste=${$('#plan-realiste').checked ? 1 : 0}${altmax ? `&altmax=${altmax}` : ''}`); } catch (e) { $('#fiche-contenu').innerHTML = `<h2>Plan de couverture</h2><div class="vide">${esc(e.message)}</div>`; return; }
   if (etat.coucheCouverture) etat.coucheCouverture.remove();
   const e = r.emprise, g = L.layerGroup();
   L.imageOverlay(r.image, [[e.sud, e.ouest], [e.nord, e.est]], { opacity: 0.7, pane: 'couverture', className: 'pixelise' }).addTo(g);
@@ -4400,7 +4449,7 @@ async function planDepartement() {
   if (r.sites.length) carte.fitBounds(L.latLngBounds(r.sites.map((x) => [x.lat, x.lon])).pad(0.3), { maxZoom: 11 });
   const nomAcces = { tous: 'tous les points hauts', voiture: 'accessibles en voiture', '4x4': 'accessibles en 4×4 ou voiture', pied: 'accessibles à pied, en 4×4 ou voiture' }[r.filtreAcces];
   $('#fiche-contenu').innerHTML = `<h2>Plan pour couvrir le département</h2>
-    <div class="ident">Objectif ${r.objectifPct} % · au plus ${r.max} sites · ${esc(nomAcces)} · ${r.avecReseau ? `en complément du réseau actuel (${r.reseau.length} relais)` : 'sans tenir compte du réseau actuel'}${r.parametres && r.parametres.hs != null ? ` · antenne des sites ${fmt(r.parametres.hs, 1, ' m')} au-dessus du sol (fixée par le classement des points hauts ; réglable pour une zone dessinée)` : ''}</div>
+    <div class="ident">Objectif ${r.objectifPct} % · au plus ${r.max} sites · ${esc(nomAcces)}${r.altMax != null ? ` · altitude ≤ ${r.altMax} m` : ''} · ${r.avecReseau ? `en complément du réseau actuel (${r.reseau.length} relais)` : 'sans tenir compte du réseau actuel'}${r.parametres && r.parametres.hs != null ? ` · antenne des sites ${fmt(r.parametres.hs, 1, ' m')} au-dessus du sol (fixée par le classement des points hauts ; réglable pour une zone dessinée)` : ''}</div>
     <div class="barre-couv"><i style="width:${r.departPct}%" class="actuel"></i><i style="width:${Math.max(0, r.finalPct - r.departPct)}%" class="ajout"></i></div>
     ${avertissementSites()}
     <div class="alerte ${r.atteint ? 'info-lecture' : 'attention'}">${r.atteint ? `✔ Objectif atteint avec <b>${r.sites.length} site${r.sites.length > 1 ? 's' : ''}</b> : ${fmt(r.departPct, 1, ' %')} → <b>${fmt(r.finalPct, 1, ' %')}</b> du département.` : `Objectif non atteint : ${fmt(r.departPct, 1, ' %')} → <b>${fmt(r.finalPct, 1, ' %')}</b> avec ${r.sites.length} site${r.sites.length > 1 ? 's' : ''}. ${r.sites.length >= r.max ? 'Augmentez le nombre de sites' : 'Les sites restants n’apportent presque rien'}${r.filtreAcces !== 'tous' ? ' ou élargissez l’accès' : ''}.`}</div>
@@ -4534,7 +4583,7 @@ async function planBudget(o) {
   const z = $('#fiche-contenu');
   z.innerHTML = '<h2>💶 Plan à budget</h2><div class="alerte info-lecture"><span class="sablier"></span> Recherche des meilleurs emplacements…</div>';
   let r;
-  try { r = await api(`/api/relief/budget?n=${encodeURIComponent(o.n)}&acces=${encodeURIComponent(o.acces)}&secteur=${encodeURIComponent(o.secteur)}&solaire=${encodeURIComponent(o.solaire)}&mat=${encodeURIComponent(o.mat)}`); } catch (e) { z.innerHTML = `<h2>💶 Plan à budget</h2><div class="vide">${esc(e.message)}</div>`; return; }
+  try { r = await api(`/api/relief/budget?n=${encodeURIComponent(o.n)}&acces=${encodeURIComponent(o.acces)}&secteur=${encodeURIComponent(o.secteur)}&solaire=${encodeURIComponent(o.solaire)}&mat=${encodeURIComponent(o.mat)}${o.altmax ? `&altmax=${encodeURIComponent(o.altmax)}` : ''}`); } catch (e) { z.innerHTML = `<h2>💶 Plan à budget</h2><div class="vide">${esc(e.message)}</div>`; return; }
   if (etat.coucheCouverture) etat.coucheCouverture.remove();
   const g = L.layerGroup();
   r.sites.forEach((x) => L.marker([x.lat, x.lon], { icon: L.divIcon({ className: 'relais-a-installer', html: `<div class="epingle"><b>${x.rang}</b></div>`, iconSize: [34, 44], iconAnchor: [17, 42] }), pane: 'traces', zIndexOffset: 900 })
@@ -4588,6 +4637,16 @@ function brancherChoixDepartement() {
   sel.onchange = () => changer(sel.value);
   const r = $('#dep-retour'); if (r) r.onclick = () => changer(etat.config.departement.code);
 }
+// Blocs repliables de l'onglet Couverture (plan, plan à budget, sites routiers, déplacement) : repliés, l'onglet tient
+// sans défilement ; le plan est ouvert par défaut, et chaque choix est gardé sur l'appareil
+const PLIS_PLAN_DEFAUT = { 'bloc-plan': true };
+const pliPlan = (id) => { const m = lireLs('gaulix_plis_couverture', null) || PLIS_PLAN_DEFAUT; return m[id] ? 'open' : ''; };
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!d.matches || !d.matches('details.pli-plan[id]')) return;
+  const m = { ...(lireLs('gaulix_plis_couverture', null) || PLIS_PLAN_DEFAUT) }; m[d.id] = d.open; ecrireLs('gaulix_plis_couverture', m);
+}, true);
+
 async function rendreSites() {
   const z = $('#sites');
   if (!z) return;
@@ -4609,13 +4668,14 @@ async function rendreSites() {
       <p class="note">Zone desservie aujourd’hui par les relais et passerelles détectés${c && c.reseauActuel ? ` : <b>${fmt(c.reseauActuel.pct, 1, ' %')}</b> du département avec ${c.reseauActuel.relais.length} relais` : ''}.</p>
       <div class="actions-prop"><button id="sites-couv-reseau" class="principal">Couverture calculée</button><button id="sites-couv-mesuree">📶 Couverture mesurée</button></div>
     </div>
-    <div class="bloc-plan" id="bloc-plan">
-      <h3>🎯 Plan pour couvrir ${e.departement ? esc(e.departement.nom || 'le département') : 'le département'}</h3>
+    <details class="bloc-plan pli-plan" id="bloc-plan" ${pliPlan('bloc-plan')}>
+      <summary><h3>🎯 Plan pour couvrir ${e.departement ? esc(e.departement.nom || 'le département') : 'le département'}</h3><small>où poser des relais pour atteindre un objectif de couverture</small></summary>
       <div class="parametres compact">
         <label>Objectif (%) <input id="plan-objectif" type="number" min="10" max="100" step="1" value="95"></label>
         <label>Sites au plus <input id="plan-max" type="number" min="1" max="40" step="1" value="15"></label>
         <label title="Hauteur de l’antenne des relais proposés, au-dessus du sol (zone dessinée)">Antenne (m au-dessus du sol) <input id="plan-hs" type="number" min="1" max="60" step="0.5" value="6"></label>
         <label>Accès exigé <select id="plan-acces"><option value="voiture">🚗 En voiture</option><option value="4x4">🚙 En 4×4 ou voiture</option><option value="pied">🥾 À pied ou mieux</option><option value="tous">Tous les points hauts</option></select></label>
+        <label title="Écarte les sites au-dessus de cette altitude : souvent hors forêt (rien où fixer une antenne) et plus difficiles d’accès">Altitude max (m) <input id="plan-altmax" type="number" min="0" max="3000" step="50" placeholder="aucune limite"></label>
       </div>
       <label class="case"><input type="checkbox" id="plan-reseau" checked> En complément du réseau actuel</label>
       <label class="case"><input type="checkbox" id="plan-realiste" checked> Sites réalistes : zones protégées écartées, châteaux d’eau et pylônes privilégiés, électricité</label>
@@ -4625,33 +4685,34 @@ async function rendreSites() {
       <div class="actions-prop"><button id="zone-dessiner">🖊 Dessiner une zone</button>
         <select id="zone-memo" title="Zones déjà dessinées dans ce navigateur"><option value="">Zones enregistrées…</option>${lireLs('gaulix_zones', []).map((z, k) => `<option value="${k}">${esc(z.nom)}</option>`).join('')}</select>
         <button id="zone-suppr" class="mini" title="Oublier la zone choisie">🗑</button></div>
-    </div>
-    <div class="bloc-plan" id="bloc-budget">
-      <h3>💶 Plan à budget</h3>
-      <p class="note">« J’ai de quoi poser N relais : où les mettre ? » Gain de surface et d’habitants à chaque relais, coût estimé.</p>
+    </details>
+    <details class="bloc-plan pli-plan" id="bloc-budget" ${pliPlan('bloc-budget')}>
+      <summary><h3>💶 Plan à budget</h3><small>« j’ai de quoi poser N relais : où les mettre ? »</small></summary>
+      <p class="note">Gain de surface et d’habitants à chaque relais, coût estimé.</p>
       <div class="parametres compact">
         <label>Relais à poser <input id="budget-n" type="number" min="1" max="15" step="1" value="3"></label>
         <label>Accès exigé <select id="budget-acces"><option value="voiture">🚗 En voiture</option><option value="4x4">🚙 En 4×4 ou voiture</option><option value="pied">🥾 À pied ou mieux</option><option value="tous">Tous les points hauts</option></select></label>
+        <label title="Écarte les sites au-dessus de cette altitude">Altitude max (m) <input id="budget-altmax" type="number" min="0" max="3000" step="50" placeholder="aucune limite"></label>
         <label>Relais secteur (€) <input id="budget-secteur" type="number" min="0" step="10" value="120"></label>
         <label>Relais solaire (€) <input id="budget-solaire" type="number" min="0" step="10" value="220"></label>
         <label>Mât + fixations (€) <input id="budget-mat" type="number" min="0" step="10" value="90"></label>
       </div>
       <div class="actions-prop"><button id="budget-calculer" class="principal">Où poser mes relais ?</button></div>
-    </div>
-    <div class="bloc-plan" id="bloc-routiers">
-      <h3>🛣️ Sites routiers (Département, DIR)</h3>
-      <p class="note">Webcams et stations routières : souvent un mât, l’électricité, parfois une liaison réseau. Classement selon la surface qu’un relais y couvrirait en plus du réseau actuel, de quoi préparer une demande au Département ou à la DIR Massif Central.</p>
+    </details>
+    <details class="bloc-plan pli-plan" id="bloc-routiers" ${pliPlan('bloc-routiers')}>
+      <summary><h3>🛣️ Sites routiers (Département, DIR)</h3><small>webcams et stations routières : un mât, l’électricité</small></summary>
+      <p class="note">Souvent un mât, l’électricité, parfois une liaison réseau. Classement selon la surface qu’un relais y couvrirait en plus du réseau actuel, de quoi préparer une demande au Département ou à la DIR Massif Central.</p>
       <div class="actions-prop"><button id="routiers-evaluer" class="principal">Évaluer ces sites pour des relais</button></div>
-    </div>
-    <div class="bloc-plan" id="bloc-deplacer">
-      <h3>🔀 Déplacer des relais existants</h3>
+    </details>
+    <details class="bloc-plan pli-plan" id="bloc-deplacer" ${pliPlan('bloc-deplacer')}>
+      <summary><h3>🔀 Déplacer des relais existants</h3><small>un point haut proche où un relais couvrirait plus</small></summary>
       <p class="note">Pour chaque relais (rôle routeur), la carte cherche les points hauts proches où il couvrirait plus de surface, sans perdre le contact radio avec le réseau.</p>
       <div class="parametres compact">
         <label>Chercher dans un rayon de <select id="dep-rayon"><option value="3">3 km</option><option value="6" selected>6 km</option><option value="10">10 km</option></select></label>
         <label>Accès exigé <select id="dep-acces"><option value="voiture">🚗 En voiture</option><option value="4x4" selected>🚙 En 4×4 ou voiture</option><option value="pied">🥾 À pied ou mieux</option><option value="tous">Tous les points hauts</option></select></label>
       </div>
       <div class="actions-prop"><button id="dep-calculer" class="principal">Où déplacer mes relais ?</button></div>
-    </div>
+    </details>
     <h3>🧭 Outils sur la carte</h3>
     <div class="outils-couv">
       <button data-outil="btn-couv-ici">📍 Couverture depuis un point<small>zone couverte par une antenne placée où vous cliquez (puis ＋ d’autres sites)</small></button>
@@ -4700,9 +4761,9 @@ async function rendreSites() {
   if (bd) bd.onclick = () => optimiserRelais(Number($('#dep-rayon').value), $('#dep-acces').value);
   const bb = $('#budget-calculer');
   if (bb) {
-    try { const v = localStorage.getItem('gaulix_budget'); if (v) { const o = JSON.parse(v); for (const k of ['n', 'acces', 'secteur', 'solaire', 'mat']) if (o[k] != null) $('#budget-' + k).value = o[k]; } } catch { /* ignoré */ }
+    try { const v = localStorage.getItem('gaulix_budget'); if (v) { const o = JSON.parse(v); for (const k of ['n', 'acces', 'altmax', 'secteur', 'solaire', 'mat']) if (o[k] != null && $('#budget-' + k)) $('#budget-' + k).value = o[k]; } } catch { /* ignoré */ }
     bb.onclick = () => {
-      const o = Object.fromEntries(['n', 'acces', 'secteur', 'solaire', 'mat'].map((k) => [k, $('#budget-' + k).value]));
+      const o = Object.fromEntries(['n', 'acces', 'altmax', 'secteur', 'solaire', 'mat'].map((k) => [k, $('#budget-' + k).value]));
       try { localStorage.setItem('gaulix_budget', JSON.stringify(o)); } catch { /* ignoré */ }
       planBudget(o);
     };
@@ -4712,10 +4773,12 @@ async function rendreSites() {
   { const zs = $('#zone-suppr'); if (zs) zs.onclick = async () => { const zm = $('#zone-memo'); const l = lireLs('gaulix_zones', []); const k = Number(zm.value); if (zm.value === '' || !l[k]) return; if (!(await confirmer(`Oublier la zone « ${l[k].nom} » ?`))) return; l.splice(k, 1); ecrireLs('gaulix_zones', l); zm.innerHTML = '<option value="">Zones enregistrées…</option>' + l.map((z, i) => `<option value="${i}">${esc(z.nom)}</option>`).join(''); }; }
   const pc = $('#plan-calculer');
   if (pc) {
-    try { const v = localStorage.getItem('gaulix_plan'); if (v) { const o = JSON.parse(v); $('#plan-objectif').value = o.objectif; $('#plan-max').value = o.max; $('#plan-acces').value = o.acces; $('#plan-reseau').checked = o.reseau; if (o.hs && $('#plan-hs')) $('#plan-hs').value = o.hs; } } catch { /* ignoré */ }
-    if ($('#plan-hs')) $('#plan-hs').onchange = () => { try { localStorage.setItem('gaulix_plan', JSON.stringify({ objectif: $('#plan-objectif').value, max: $('#plan-max').value, acces: $('#plan-acces').value, reseau: $('#plan-reseau').checked, hs: $('#plan-hs').value })); } catch { /* ignoré */ } };
+    try { const v = localStorage.getItem('gaulix_plan'); if (v) { const o = JSON.parse(v); $('#plan-objectif').value = o.objectif; $('#plan-max').value = o.max; $('#plan-acces').value = o.acces; $('#plan-reseau').checked = o.reseau; if (o.hs && $('#plan-hs')) $('#plan-hs').value = o.hs; if (o.altmax && $('#plan-altmax')) $('#plan-altmax').value = o.altmax; } } catch { /* ignoré */ }
+    const sauverPlan = () => { try { localStorage.setItem('gaulix_plan', JSON.stringify({ objectif: $('#plan-objectif').value, max: $('#plan-max').value, acces: $('#plan-acces').value, reseau: $('#plan-reseau').checked, hs: ($('#plan-hs') || {}).value, altmax: ($('#plan-altmax') || {}).value })); } catch { /* ignoré */ } };
+    if ($('#plan-hs')) $('#plan-hs').onchange = sauverPlan;
+    if ($('#plan-altmax')) $('#plan-altmax').onchange = sauverPlan;
     pc.onclick = () => {
-      try { localStorage.setItem('gaulix_plan', JSON.stringify({ objectif: $('#plan-objectif').value, max: $('#plan-max').value, acces: $('#plan-acces').value, reseau: $('#plan-reseau').checked, hs: ($('#plan-hs') || {}).value })); } catch { /* ignoré */ }
+      sauverPlan();
       planDepartement();
     };
   }
@@ -5061,7 +5124,7 @@ async function rendreModules(force) {
   zone.innerHTML = blocUsbNavigateur() + (connus.length ? connus.map(ligne).join('') : '<div class="vide">Aucun module enregistré.</div>')
     + (ecs.length ? `<h4 class="titre-ecoute">Modules en écoute (${ecs.length})</h4>${ecs.map(ligneEcoute).join('')}<p class="note">Un module en écoute sert de passerelle supplémentaire : ce qu’il entend (SNR, voisins, parcours des messages) s’ajoute à la carte. Les envois et l’administration passent par le module principal.</p>` : '') + `
     <form id="form-module" class="parametres compact">
-      <label>Adresse IP <input name="hote" placeholder="192.168.1.50" required></label>
+      <label>Adresse IP <input data-notion="hoteModule" name="hote" placeholder="192.168.1.50" required></label>
       <label>Nom (facultatif) <input name="nom" placeholder="Maison"></label>
       <button type="submit">Ajouter</button>
     </form>
@@ -5501,7 +5564,7 @@ async function ficheFirmware() {
     <div class="alerte attention">« Vérifier » ouvre une courte connexion au module : un autre client connecté à lui en Wi-Fi (appli, MeshMonitor) est déconnecté un instant.</div>
     ${r.modules.map(ligne).join('') || '<div class="vide">Aucun module enregistré en IP (Réseau › Modules).</div>'}
     <h3>Autre module</h3>
-    <form id="f-fw-ip" class="parametres compact"><label>Adresse IP <input name="hote" placeholder="192.168.0.42" required></label><button type="submit">Ajouter à la liste</button></form>
+    <form id="f-fw-ip" class="parametres compact"><label>Adresse IP <input data-notion="hoteModule" name="hote" placeholder="192.168.0.42" required></label><button type="submit">Ajouter à la liste</button></form>
     <p class="erreur" id="fw-retour"></p>`;
   const brancher = (el) => {
     el.querySelector('[data-verifier]').onclick = async (ev) => {
@@ -5625,7 +5688,7 @@ meshtastic --host 192.168.1.50 --dest '!a1b2c3d4' --set security.is_managed true
         ${m.dernier && m.dernier.statut === 'echec' && m.dernier.detail ? `<small class="detail">${esc(m.dernier.detail)}</small>` : ''}
         ${m.etat === 'membre' ? `<button class="mini" data-retirer="${m.num}" title="Retirer le canal de ce nœud">Retirer</button>` : ''}
         <small class="detail ${m.sansNouvelle ? 'sans-nouvelle' : ''}">${m.position ? `📍 position ${m.position.heure ? ilYa(m.position.heure) : 'connue'} <a href="#" data-voir-pos="${m.position.lat},${m.position.lon}">voir</a>` : '📍 position inconnue'}${m.sansNouvelle ? ' · ⚠ sans nouvelle' : ''}</small></div>`; }).join('') : '<div class="vide">Aucun nœud dans cette équipe.</div>'}</div>
-      <div class="champ-ajout"><input type="text" data-saisie placeholder="!a1b2c3d4, !e5f6a7b8…" aria-label="Nœuds à ajouter"><button class="principal" data-ajouter>➕ Ajouter${sel.length ? ` (+ ${sel.length} coché${sel.length > 1 ? 's' : ''})` : ''}</button></div>
+      <div class="champ-ajout"><input data-notion="listeNoeuds" type="text" data-saisie placeholder="!a1b2c3d4, !e5f6a7b8…" aria-label="Nœuds à ajouter"><button class="principal" data-ajouter>➕ Ajouter${sel.length ? ` (+ ${sel.length} coché${sel.length > 1 ? 's' : ''})` : ''}</button></div>
       <label>Suivi des positions <select data-suivi>${[[0, 'à la demande'], [5, 'toutes les 5 min'], [10, 'toutes les 10 min'], [15, 'toutes les 15 min'], [30, 'toutes les 30 min'], [60, 'toutes les heures']].map(([v, t]) => `<option value="${v}" ${e.suiviMin === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="case"><input type="checkbox" data-positions ${e.positions ? 'checked' : ''}> Positions des membres sur le canal d’équipe (s’applique aux prochains envois)</label>
       ${(e.sos || []).map((x) => `<div class="alerte ${x.pris ? 'info-lecture' : 'critique'} sos-eq">🆘 <b>${esc(x.nom)}</b> demande de l’aide ${ilYa(x.heure)} : « ${esc(x.texte)} »${x.position ? ` · <a href="#" data-voir-pos="${x.position.lat},${x.position.lon}">📍 voir</a> <small class="mono">${esc((window.DFCI && DFCI.versDfci(x.position.lat, x.position.lon)) || '')}</small>` : ''}${x.pris ? ` <small>· pris en compte par ${esc(x.prisPar || '?')} ${ilYa(x.pris)}</small>` : ` <button class="mini principal" data-sos-pris="${x.id}">✔ Pris en compte</button>`}</div>`).join('')}
@@ -5654,7 +5717,7 @@ meshtastic --host 192.168.1.50 --dest '!a1b2c3d4' --set security.is_managed true
       <label>Description <input id="eq-desc" maxlength="120" placeholder="Équipe cynophile, secteur nord…"></label>
     </div>
     <label class="case"><input type="checkbox" id="eq-pos"> Partager les positions des membres sur ce canal</label>
-    <details><summary>Importer une clé existante (sinon une clé AES-256 est générée)</summary><input id="eq-cle" type="password" autocomplete="off" placeholder="clé base64 (16 ou 32 octets)"></details>
+    <details><summary>Importer une clé existante (sinon une clé AES-256 est générée)</summary><input data-notion="cleCanal" id="eq-cle" type="password" autocomplete="off" placeholder="clé base64 (16 ou 32 octets)"></details>
     <div class="actions-prop"><button id="eq-creer" class="principal">Créer l’équipe</button></div>
     <p class="erreur" id="eq-retour"></p>
     <p class="note">Retirer un nœud n’efface le canal que s’il est joignable. Pour un nœud <b>perdu ou volé</b>, retirez-le puis faites <b>🔑 Nouvelle clé</b> : les autres membres la reçoivent, l’ancien nœud ne comprend plus rien. Les envois se suivent dans Programmer › Opérations récentes ; un nœud absent est repris toutes les 10 min pendant 2 h.</p></div>`;
@@ -6423,6 +6486,7 @@ function brancherInterface() {
   $('#deplier').onclick = () => { $('#panneau').classList.remove('replie'); $('#deplier').hidden = true; document.body.classList.remove('panneau-replie'); };
   installerDetachement();
   $('#fermer-fiche').onclick = () => {
+    etat.retourListeSites = null; // la liste de sites mise de côté n'a plus lieu d'être
     const retour = etat.retourFiche; etat.retourFiche = null; // consommé une seule fois : jamais de va-et-vient sans fin
     $('#fiche').hidden = true; etat.selection = null;
     if (etat.trajet) { etat.trajet.remove(); etat.trajet = null; }
@@ -6540,6 +6604,14 @@ function brancherInterface() {
     m.style.maxHeight = '';
     m.style.maxHeight = Math.max(160, Math.floor(window.innerHeight - m.getBoundingClientRect().top - 12)) + 'px';
   }));
+  // Menus du haut (Couches, Couverture radio, Outils) : jamais plus hauts que la place sous leur bouton, pour
+  // qu'on puisse toujours faire défiler jusqu'à la dernière entrée (Outils est long en « Les deux » réseaux)
+  document.querySelectorAll('details.menu-couches').forEach((d) => d.addEventListener('toggle', () => {
+    const m = d.open && d.querySelector(':scope > .menu');
+    if (!m || getComputedStyle(m).position === 'fixed') return; // téléphone : déjà borné par la feuille de style
+    m.style.maxHeight = '';
+    m.style.maxHeight = Math.max(160, Math.floor(window.innerHeight - m.getBoundingClientRect().top - 12)) + 'px';
+  }));
   $('#outil-partager').onclick = () => { const m = document.querySelector('.menu-outils'); if (m) m.open = false; fichePartager(); };
   $('#btn-simulation').onclick = () => { const mr = $('#menu-radio'); if (mr) mr.open = false; simulation(); };
   $('#btn-plan-menu').onclick = () => { const mr = $('#menu-radio'); if (mr) mr.open = false; allerPlan(); };
@@ -6565,6 +6637,7 @@ function brancherInterface() {
   $('#rejeu-fermer').onclick = fermerRejeu;
   $('#rejeu-curseur').oninput = (e) => placerRejeu(Number(e.target.value));
   $('#btn-effacer').onclick = () => {
+    etat.retourListeSites = null; // la liste de sites mise de côté n'a plus lieu d'être
     etat.ciblesMulti = null;
     etat.sitesCouv = null;
     if (etat.coucheCouverture) etat.coucheCouverture.remove();
@@ -6711,7 +6784,7 @@ function ouvrirGestion() {
     <h3>Adresse e-mail</h3>
     <p class="note">Sert à recevoir un lien si vous oubliez votre mot de passe. Elle n’est montrée qu’aux administrateurs.</p>
     <form id="form-email" class="parametres compact">
-      <label>E-mail <input name="email" type="email" autocomplete="email" value="${esc(c.email || '')}" placeholder="prenom@exemple.fr"></label>
+      <label>E-mail <input data-notion="email" name="email" type="email" autocomplete="email" value="${esc(c.email || '')}" placeholder="prenom@exemple.fr"></label>
       <button type="submit">Enregistrer</button>
     </form>
     <p class="erreur" id="retour-email"></p>

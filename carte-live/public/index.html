@@ -84,45 +84,53 @@
     </details>
     <button id="btn-rejeu" title="Rejouer les dernières 24 heures">Rejeu</button>
     <button id="btn-chercher-reglage" class="bouton-cherche" title="Chercher un réglage ou une fonction (Ctrl+K)">⚙️🔎</button>
+    <!-- Chaque entrée du menu Outils porte son niveau d’affichage (data-niveau : simple, operateur ou expert) et, au besoin,
+         des mots-clés pour la recherche de fonctions (data-chercher). Rien d’autre à tenir à jour ailleurs. -->
     <details class="menu-couches menu-outils">
       <summary>Outils ▾</summary>
       <div class="menu">
-        <button id="outil-connecter" class="bascule outil-principal" title="Bluetooth, USB ou adresse IP : Meshtastic ou MeshCore, reconnu tout seul">🔌 Connecter un module…</button>
-        <button id="outil-registre" class="bascule" title="Sites, autorisations, dernières visites, énergie et firmware de chaque relais, avec export CSV">🗂️ Registre des relais</button>
+        <button id="outil-connecter" class="bascule outil-principal" data-niveau="simple" data-chercher="bluetooth usb wifi adresse ip module radio companion relier brancher" title="Bluetooth, USB ou adresse IP : module Meshtastic ou companion MeshCore, reconnu tout seul ; c’est aussi ici qu’on le débranche">🔌 Connecter un module…</button>
+        <button id="outil-registre" class="bascule" data-niveau="operateur" data-chercher="inventaire site autorisation propriétaire visite csv" title="Sites, autorisations, dernières visites, énergie et firmware de chaque relais, avec export CSV">🗂️ Registre des relais</button>
         <div class="titre-outils outils-mt">Meshtastic</div>
-        <button id="outil-inviter" class="bascule outils-mt niv-op" title="Nœuds d’un autre preset (LongFast…) autour du réseau : les repérer et les inviter">📣 Nœuds à inviter</button>
-        <button id="outil-usb" class="bascule outils-mt" title="Brancher sur la carte le module relié en USB à ce PC (Chrome ou Edge)">🔌 Module USB de ce PC</button>
-        <button id="outil-ble" class="bascule outils-mt" title="Relier à la carte un module Bluetooth proche de ce PC (Chrome ou Edge)">📶 Module Bluetooth</button>
-        <a id="lien-client" class="bascule outils-mt" target="_blank" rel="noopener" title="Client officiel Meshtastic : gérer un module en USB, Bluetooth ou Wi-Fi depuis ce navigateur">📟 Client Meshtastic</a>
-        <a id="lien-flasher" class="bascule outils-mt" target="_blank" rel="noopener" title="Flasheur officiel : installer ou mettre à jour le firmware d'un module branché en USB">⚡ Flasher un module Meshtastic</a>
+        <button id="outil-inviter" class="bascule outils-mt" data-niveau="operateur" title="Nœuds d’un autre preset (LongFast…) autour du réseau : les repérer et les inviter">📣 Nœuds à inviter</button>
+        <button id="outil-usb" class="bascule outils-mt" data-niveau="operateur" title="Brancher sur la carte le module relié en USB à ce PC (Chrome ou Edge)">🔌 Module USB de ce PC</button>
+        <button id="outil-ble" class="bascule outils-mt" data-niveau="operateur" title="Relier à la carte un module Bluetooth proche de ce PC (Chrome ou Edge)">📶 Module Bluetooth</button>
+        <a id="lien-client" class="bascule outils-mt" data-niveau="operateur" target="_blank" rel="noopener" title="Client officiel Meshtastic : gérer un module en USB, Bluetooth ou Wi-Fi depuis ce navigateur">📟 Client Meshtastic</a>
+        <a id="lien-flasher" class="bascule outils-mt" data-niveau="operateur" target="_blank" rel="noopener" title="Flasheur officiel : installer ou mettre à jour le firmware d'un module branché en USB">⚡ Flasher un module Meshtastic</a>
         <div class="titre-outils outils-mc" hidden>MeshCore</div>
-        <a class="bascule outils-mc" hidden href="https://flasher.meshcore.co.uk" target="_blank" rel="noopener" title="Flasheur officiel MeshCore : installer le firmware companion, répéteur ou room server sur un module branché en USB (Chrome ou Edge)">⚡ Flasher un module MeshCore</a>
-        <a class="bascule outils-mc" hidden href="https://config.meshcore.dev" target="_blank" rel="noopener" title="Outil officiel : configurer en USB un répéteur ou un room server MeshCore (nom, radio, mot de passe…)">🛠️ Configurer un répéteur MeshCore (USB)</a>
-        <a class="bascule outils-mc" hidden href="https://app.meshcore.nz" target="_blank" rel="noopener" title="Application officielle MeshCore dans le navigateur : utiliser un companion en USB ou Bluetooth">📟 Application MeshCore</a>
-        <button class="bascule outils-mc" hidden id="outil-companion-mc" title="Relier à la carte un companion MeshCore branché sur ce PC (onglet MeshCore → Companion)">🔌 Relier un companion MeshCore</button>
+        <a class="bascule outils-mc" data-niveau="operateur" hidden href="https://flasher.meshcore.co.uk" target="_blank" rel="noopener" title="Flasheur officiel MeshCore : installer le firmware companion, répéteur ou room server sur un module branché en USB (Chrome ou Edge)">⚡ Flasher un module MeshCore</a>
+        <a class="bascule outils-mc" data-niveau="expert" hidden href="https://config.meshcore.dev" target="_blank" rel="noopener" title="Outil officiel : configurer en USB un répéteur ou un room server MeshCore (nom, radio, mot de passe…)">🛠️ Configurer un répéteur MeshCore (USB)</a>
+        <a class="bascule outils-mc" data-niveau="operateur" hidden href="https://app.meshcore.nz" target="_blank" rel="noopener" title="Application officielle MeshCore dans le navigateur : utiliser un companion en USB ou Bluetooth">📟 Application MeshCore</a>
+        <button class="bascule outils-mc" data-niveau="operateur" hidden id="outil-companion-mc" title="Relier à la carte un companion MeshCore branché sur ce PC (onglet MeshCore → Companion)">🔌 Relier un companion MeshCore</button>
         <div class="titre-outils">Réseau</div>
-        <button id="outil-rejoindre" class="bascule niv-op" hidden title="Page publique pour les nouveaux venus : QR du canal, réglages conseillés, règles, relais, dons">🤝 Page « Rejoindre le réseau »</button>
-        <a class="bascule outils-mc" hidden href="topologie.html?reseau=mc" title="Graphe des liaisons MeshCore : points de rupture, répéteurs les plus traversés, trafic en direct, simulation de l’inondation">🕸️ Topologie et simulation MeshCore</a>
-        <button id="outil-passerelle" class="bascule" hidden title="Relayer des messages entre un canal Meshtastic et un canal MeshCore (outil d’appoint, administrateurs)">⇄ Passerelle inter-réseaux</button>
-        <button id="outil-trafic" class="bascule outils-mt" title="Nœuds trop bavards (positions, télémétrie) et paquets réinjectés depuis MQTT">🚦 Contrôle du trafic</button>
-        <a class="bascule outils-mt" href="topologie.html" title="Graphe des liaisons radio : points de rupture, relais les plus traversés, distance aux passerelles, et simulation de la propagation d’un paquet">🕸️ Topologie et simulation</a>
+        <button id="outil-rejoindre" class="bascule" data-niveau="operateur" hidden title="Page publique pour les nouveaux venus : QR du canal, réglages conseillés, règles, relais, dons">🤝 Page « Rejoindre le réseau »</button>
+        <a class="bascule outils-mc" data-niveau="expert" hidden href="topologie.html?reseau=mc" title="Graphe des liaisons MeshCore : points de rupture, répéteurs les plus traversés, trafic en direct, simulation de l’inondation">🕸️ Topologie et simulation MeshCore</a>
+        <button id="outil-passerelle" class="bascule" data-niveau="expert" hidden title="Relayer des messages entre un canal Meshtastic et un canal MeshCore (outil d’appoint, administrateurs)">⇄ Passerelle inter-réseaux</button>
+        <button id="outil-trafic" class="bascule outils-mt" data-niveau="expert" title="Nœuds trop bavards (positions, télémétrie) et paquets réinjectés depuis MQTT">🚦 Contrôle du trafic</button>
+        <a class="bascule outils-mt" data-niveau="expert" href="topologie.html" title="Graphe des liaisons radio : points de rupture, relais les plus traversés, distance aux passerelles, et simulation de la propagation d’un paquet">🕸️ Topologie et simulation</a>
         <div class="titre-outils">Sur le terrain</div>
-        <button id="outil-portee" class="bascule" title="Écouter un nœud en direct : qui l’entend, avec quel signal, par quels relais, et s’il remonte sur MQTT">📶 Test de portée d’un nœud</button>
-        <button id="outil-terrain" class="bascule" title="Relevé GPS avec photo et note, même sans réseau ; préparer la carte hors connexion ; installer l’application sur le téléphone">📍 Mode terrain</button>
+        <button id="outil-portee" class="bascule" data-niveau="operateur" title="Écouter un nœud en direct : qui l’entend, avec quel signal, par quels relais, et s’il remonte sur MQTT">📶 Test de portée d’un nœud</button>
+        <button id="outil-terrain" class="bascule" data-niveau="simple" data-chercher="relevé gps photo hors connexion téléphone" title="Relevé GPS avec photo et note, même sans réseau ; préparer la carte hors connexion ; installer l’application sur le téléphone">📍 Mode terrain</button>
         <div class="titre-outils">Partager</div>
-        <button id="outil-france" class="bascule" hidden title="Télécharger et installer le relief de toute la France (administrateur)">🗺️ Toute la France</button>
-        <button id="outil-urgence" class="bascule" hidden title="Configuration de crise pour tous les comptes connectés : bandeau, carte simplifiée, journal horodaté exportable">🚨 Mode urgence</button>
-        <button id="outil-secteurs" class="bascule" hidden title="Prévenir quand un membre d’une équipe sort d’un secteur dessiné sur la carte (ou y entre)">🗺️ Secteurs d’alerte</button>
-        <button id="outil-signalements" class="bascule seul-membre" hidden title="Événements signalés sur la carte et diffusés en LoRa">🚩 Signalements</button>
-        <button id="outil-rapport" class="bascule seul-membre" hidden title="État du réseau sur 7 jours, imprimable en PDF ; archivé chaque lundi">📄 Rapport hebdomadaire</button>
-        <button id="outil-partager" class="bascule" title="Carte publique à intégrer dans un site, exports GeoJSON / GPX, Grafana, Home Assistant">📤 Carte publique et exports</button>
+        <button id="outil-france" class="bascule" data-niveau="expert" hidden title="Télécharger et installer le relief de toute la France (administrateur)">🗺️ Toute la France</button>
+        <button id="outil-signalements" class="bascule seul-membre" data-niveau="simple" data-chercher="route inondée arbre événement waypoint point de passage" hidden title="Événements signalés sur la carte et diffusés en LoRa">🚩 Signalements</button>
+        <button id="outil-rapport" class="bascule seul-membre" data-niveau="operateur" hidden title="État du réseau sur 7 jours, imprimable en PDF ; archivé chaque lundi">📄 Rapport hebdomadaire</button>
+        <button id="outil-partager" class="bascule" data-niveau="operateur" title="Carte publique à intégrer dans un site, exports GeoJSON / GPX, Grafana, Home Assistant">📤 Carte publique et exports</button>
         <div class="titre-outils">Affichage</div>
-        <button id="outil-theme" class="bascule" title="Interface claire à fort contraste, lisible en plein soleil">☀️ Thème clair (plein soleil)</button>
-        <button id="outil-affichage" class="bascule" title="Niveau d’affichage (simple, opérateur, expert), grand texte, visite guidée">🎚️ Niveau d’affichage, grand texte…</button>
-        <button id="outil-installer" class="bascule" hidden title="Ajouter la carte sur l'écran d'accueil (plein écran, ouverture même sans réseau)">📲 Installer l'application</button>
+        <button id="outil-theme" class="bascule" data-niveau="simple" title="Interface claire à fort contraste, lisible en plein soleil">☀️ Thème clair (plein soleil)</button>
+        <button id="outil-affichage" class="bascule" data-niveau="simple" title="Niveau d’affichage (simple, opérateur, expert), grand texte, visite guidée">🎚️ Niveau d’affichage, grand texte…</button>
+        <button id="outil-installer" class="bascule" data-niveau="simple" hidden title="Ajouter la carte sur l'écran d'accueil (plein écran, ouverture même sans réseau)">📲 Installer l'application</button>
         <small id="note-outils" class="note"></small>
       </div>
     </details>
+    <!-- Sorties du menu Outils : Mode urgence et Secteurs d’alerte ne sont plus des lignes de menu parmi 25 autres.
+         Leur visibilité (rôle du compte) reste réglée ailleurs par leur id ; la rubrique « Opérations »
+         (rendreHubOperations, ergonomie.js) les reprend en tuiles. D’autres fonctions de terrain (espaces de
+         coordination, groupes radioamateur…) viendront s’y ajouter de la même façon. -->
+    <div id="operations-sources" hidden>
+      <button id="outil-urgence" class="bascule" data-chercher="crise catastrophe exercice tableau de crise journal opérations" hidden title="Configuration de crise pour tous les comptes connectés : bandeau, carte simplifiée, journal horodaté exportable">🚨 Mode urgence</button>
+      <button id="outil-secteurs" class="bascule" data-chercher="géorepérage geofence zone périmètre polygone cercle sortie entrée opérations" hidden title="Prévenir quand un membre d’une équipe sort d’un secteur dessiné sur la carte (ou y entre)">🗺️ Secteurs d’alerte</button>
+    </div>
     <button id="btn-effacer" hidden title="Effacer la couverture affichée">Effacer</button>
     <button id="btn-admin" class="admin">Connexion</button>
   </div>
@@ -137,12 +145,14 @@
   <aside class="panneau" id="panneau">
     <nav class="groupes" role="tablist" aria-label="Rubriques">
       <button data-groupe="reseau" role="tab" class="actif" title="Tableau de bord, nœuds, trafic, statistiques">Réseau</button>
+      <button data-groupe="operations" role="tab" hidden title="Mode urgence, secteurs d’alerte : tout ce qui sert le jour J">🚨 Opérations</button>
       <button data-groupe="messages" role="tab" title="Lire et écrire sur les canaux Meshtastic et MeshCore">Messages</button>
       <button data-groupe="couverture" role="tab" title="Couverture radio, sites, plans">Couverture</button>
       <button data-groupe="gerer" role="tab" title="Gérer les nœuds à distance : programmation, équipes, clés, firmware">Gérer</button>
       <button data-groupe="reglages" role="tab" title="Tous les réglages au même endroit">Réglages</button>
       <button class="aide-onglet" id="btn-aide" title="Aide sur cet écran" aria-label="Aide sur cet écran">?</button>
     </nav>
+    <div class="fil-position" id="fil-position" aria-live="polite"></div>
     <nav class="onglets" aria-label="Sous-rubriques">
       <button data-onglet="reseau" class="actif">Réseau</button>
       <button data-onglet="noeuds">Nœuds</button>
@@ -152,12 +162,14 @@
       <button data-onglet="gestion" id="onglet-gestion" hidden title="Programmer les nœuds à distance par LoRa">Programmer</button>
       <button data-onglet="messages" id="onglet-messages" hidden>Messages</button>
       <button data-onglet="reglages" hidden>Réglages</button>
+      <button data-onglet="operations" hidden>Opérations</button>
       <button data-onglet="meshcore" class="onglet-mc" hidden title="Réseau MeshCore : nœuds, paquets, companion">MeshCore</button>
       <button class="detacher" id="detacher" title="Détacher le panneau dans une fenêtre à part (deuxième écran)" aria-label="Détacher le panneau">⧉</button>
       <button class="replier" id="replier" title="Replier le panneau">‹</button>
     </nav>
 
     <section data-vue="reglages" class="vue"><div id="hub-reglages"></div></section>
+    <section data-vue="operations" class="vue"><div id="hub-operations"></div></section>
 
     <section data-vue="reseau" class="vue actif">
       <div id="accueil"></div>
@@ -393,7 +405,7 @@
     </form>
     <form id="form-reinit" data-pan="reinit" hidden>
       <h3>Choisir un nouveau mot de passe</h3>
-      <label>Nouveau mot de passe <input name="nouveau" type="password" autocomplete="new-password" required minlength="8"></label>
+      <label>Nouveau mot de passe <input data-notion="motDePasse" name="nouveau" type="password" autocomplete="new-password" required minlength="8"></label>
       <label>Confirmer <input name="confirmation" type="password" autocomplete="new-password" required minlength="8"></label>
       <p class="erreur"></p>
       <div class="actions"><button type="submit" class="principal">Enregistrer</button></div>
@@ -401,8 +413,8 @@
     <form id="form-inscription" data-pan="inscription" hidden>
       <p class="note" id="note-inscription"></p>
       <label>Identifiant <input name="identifiant" autocomplete="username" required minlength="3" maxlength="32"></label>
-      <label>Indicatif radio (facultatif) <input name="indicatif" placeholder="F4XXX" maxlength="16"></label>
-      <label>E-mail (facultatif) <input name="email" type="email" autocomplete="email"></label>
+      <label>Indicatif radio (facultatif) <input data-notion="indicatif" name="indicatif" placeholder="F4XXX" maxlength="16"></label>
+      <label>E-mail (facultatif) <input data-notion="email" name="email" type="email" autocomplete="email"></label>
       <label>Mot de passe <input name="motDePasse" type="password" autocomplete="new-password" required minlength="8"></label>
       <label>Confirmer le mot de passe <input name="confirmation" type="password" autocomplete="new-password" required minlength="8"></label>
       <p class="erreur"></p>
@@ -453,7 +465,7 @@
       <h3>1. Compte administrateur</h3>
       <div class="grille-form">
         <label>Identifiant <input name="identifiant" required minlength="3" maxlength="32" autocomplete="username"></label>
-        <label>Indicatif radio <input name="indicatif" placeholder="F4XXX" maxlength="16"></label>
+        <label>Indicatif radio <input data-notion="indicatif" name="indicatif" placeholder="F4XXX" maxlength="16"></label>
         <label>Mot de passe <input name="motDePasse" type="password" required minlength="8" autocomplete="new-password"></label>
         <label>Confirmer <input name="confirmation" type="password" required minlength="8" autocomplete="new-password"></label>
         <label id="champ-code-installation" hidden>Code d'installation <input name="code" type="password" autocomplete="off"><small id="aide-code-installation">Valeur de ADMIN_MOT_DE_PASSE dans le fichier .env</small></label>
@@ -462,12 +474,12 @@
       <div class="grille-form">
         <label>Département <select name="departement"></select></label>
         <label>Nom de la carte <input name="titre" placeholder="Réseau Meshtastic · …" maxlength="80"></label>
-        <label>Serveur MQTT <input name="mqttUrl" placeholder="mqtt://serveur:1883"></label>
-        <label>Sujet racine <input name="mqttRacine" placeholder="msh/EU_868"></label>
+        <label>Serveur MQTT <input data-notion="mqttUrl" name="mqttUrl" placeholder="mqtt://serveur:1883"></label>
+        <label>Sujet racine <input data-notion="mqttRacine" name="mqttRacine" placeholder="msh/EU_868"></label>
         <label>Utilisateur MQTT <input name="mqttUtilisateur" autocomplete="off"></label>
         <label>Mot de passe MQTT <input name="mqttMotDePasse" type="password" autocomplete="new-password"></label>
         <div class="large-col"><button type="button" id="inst-tester-mqtt">🔌 Tester ce serveur MQTT (10 s)</button> <span id="inst-test-mqtt" class="note"></span></div>
-        <label class="large-col">Canaux à déchiffrer <textarea name="canaux" rows="3" placeholder="LongFast=AQ==&#10;MonCanal=clé en base64"></textarea><small>Un canal par ligne : nom=clé (AQ== = clé publique par défaut)</small></label>
+        <label class="large-col">Canaux à déchiffrer <textarea data-notion="canauxCles" name="canaux" rows="3" placeholder="LongFast=AQ==&#10;MonCanal=clé en base64"></textarea><small>Un canal par ligne : nom=clé (AQ== = clé publique par défaut)</small></label>
         <label>Inscriptions <select name="inscriptions"><option value="validation">Sur validation de l'admin</option><option value="ouvertes">Ouvertes à tous</option><option value="fermees">Fermées</option></select></label>
       </div>
       <p class="erreur"></p>
@@ -479,6 +491,7 @@
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/vendor/protomaps-leaflet/protomaps-leaflet.js"></script>
   <script src="/dfci.js"></script>
+  <script src="/commun.js"></script>
   <script src="/app.js"></script>
   <script src="/animations.js"></script>
   <script src="/meshcore.js"></script>

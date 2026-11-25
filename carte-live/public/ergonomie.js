@@ -5,87 +5,8 @@
 // Chargé après app.js et meshcore.js : s'appuie sur leurs fonctions, sans changer leur fonctionnement
 // (les 8 onglets d'origine existent toujours, rangés en sous-rubriques).
 
-// ---- Confirmation dans l'interface (remplace confirm() du navigateur) -----------------------------------------
-function confirmer(texte, { ok = 'Confirmer', annuler = 'Annuler' } = {}) {
-  return new Promise((resoudre) => {
-    let d = document.getElementById('dlg-confirmer');
-    if (!d) {
-      d = document.createElement('dialog');
-      d.id = 'dlg-confirmer'; d.className = 'dlg-confirmer';
-      d.setAttribute('aria-labelledby', 'confirmer-texte');
-      document.body.appendChild(d);
-    }
-    const danger = /supprim|effac|retir|désactiv|termin|forcer|interromp|remettre à zéro|nouvelle clé|seront remplacés/i.test(texte);
-    d.innerHTML = `<p id="confirmer-texte"></p><div class="actions-confirmer"><button type="button" data-r="0">${esc(annuler)}</button><button type="button" data-r="1" class="${danger ? 'danger' : 'principal'}">${esc(ok)}</button></div>`;
-    d.querySelector('p').textContent = texte;
-    const fin = (v) => { d.onclose = null; if (d.open) d.close(); resoudre(v); };
-    d.querySelectorAll('[data-r]').forEach((b) => (b.onclick = () => fin(b.dataset.r === '1')));
-    d.onclose = () => resoudre(false); // Échap
-    d.onclick = (e) => { if (e.target === d) { const r = d.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) fin(false); } };
-    d.showModal();
-    d.querySelector('[data-r="1"]').focus();
-  });
-}
-// Saisie dans l'interface (remplace prompt() du navigateur) : renvoie le texte, ou null si annulé.
-// options.suggestions : fonction optionnelle, appelée au fil de la frappe avec ce qui est tapé, qui renvoie une
-// liste de propositions [{ valeur, libelle, detail }]. Choisir une proposition remplit le champ, qui reste
-// toujours LIBRE : on peut valider un texte qui n'est dans aucune proposition (écouter un nœud encore inconnu,
-// par exemple). Clavier : ↓ ↑ pour parcourir, Entrée pour prendre la proposition visée, Échap pour refermer la
-// liste (un second Échap ferme la boîte). Les appels qui ne passent pas « suggestions » ne changent pas.
-function saisir(texte, defaut = '', options = {}) {
-  return new Promise((resoudre) => {
-    let d = document.getElementById('dlg-saisir');
-    if (!d) { d = document.createElement('dialog'); d.id = 'dlg-saisir'; d.className = 'dlg-confirmer'; d.setAttribute('aria-labelledby', 'saisir-texte'); document.body.appendChild(d); }
-    d.innerHTML = '<form method="dialog"><p id="saisir-texte"></p><input id="saisir-champ" autocomplete="off"><div class="propositions-saisir" id="saisir-props" role="listbox" aria-label="Propositions" hidden></div><div class="actions-confirmer"><button type="button" data-r="0">Annuler</button><button type="submit" class="principal">Valider</button></div></form>';
-    d.querySelector('p').textContent = texte;
-    const champ = d.querySelector('input');
-    champ.value = defaut == null ? '' : String(defaut);
-    let rendu = false;
-    const fin = (v) => { if (rendu) return; rendu = true; d.onclose = null; if (d.open) d.close(); resoudre(v); };
-    d.querySelector('[data-r="0"]').onclick = () => fin(null);
-    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); fin(champ.value); };
-    d.onclose = () => fin(null);
-    const suggerer = typeof options.suggestions === 'function' ? options.suggestions : null;
-    const props = d.querySelector('#saisir-props');
-    if (suggerer) {
-      let choix = [], vise = -1, minuterie = null;
-      champ.setAttribute('role', 'combobox');
-      champ.setAttribute('aria-autocomplete', 'list');
-      champ.setAttribute('aria-controls', 'saisir-props');
-      champ.setAttribute('aria-expanded', 'false');
-      const fermer = () => { props.hidden = true; props.innerHTML = ''; choix = []; vise = -1; champ.setAttribute('aria-expanded', 'false'); champ.removeAttribute('aria-activedescendant'); };
-      const viser = (i) => {
-        vise = i;
-        [...props.children].forEach((b, k) => { const a = k === i; b.classList.toggle('vise', a); b.setAttribute('aria-selected', a ? 'true' : 'false'); if (a) b.scrollIntoView({ block: 'nearest' }); });
-        if (i >= 0) champ.setAttribute('aria-activedescendant', 'saisir-prop-' + i); else champ.removeAttribute('aria-activedescendant');
-      };
-      const prendre = (i) => { const c = choix[i]; if (!c) return; champ.value = String(c.valeur); fermer(); champ.focus(); };
-      const proposer = () => {
-        let l = [];
-        try { l = suggerer(champ.value) || []; } catch { l = []; } // une proposition en panne ne doit pas bloquer la saisie
-        choix = l.slice(0, 10);
-        if (!choix.length) { fermer(); return; }
-        props.innerHTML = choix.map((c, i) => `<button type="button" role="option" id="saisir-prop-${i}" aria-selected="false" data-i="${i}"><b>${esc(c.libelle)}</b>${c.detail ? `<small>${esc(c.detail)}</small>` : ''}</button>`).join('');
-        props.hidden = false;
-        champ.setAttribute('aria-expanded', 'true');
-        viser(-1);
-      };
-      // Au fil de la frappe, mais pas à chaque touche : la liste est refaite après une courte pause
-      champ.addEventListener('input', () => { clearTimeout(minuterie); minuterie = setTimeout(proposer, 120); });
-      props.addEventListener('mousedown', (e) => { const b = e.target.closest('[data-i]'); if (b) { e.preventDefault(); prendre(Number(b.dataset.i)); } });
-      champ.addEventListener('keydown', (e) => {
-        if (props.hidden) { if (e.key === 'ArrowDown') { e.preventDefault(); clearTimeout(minuterie); proposer(); } return; }
-        if (e.key === 'ArrowDown') { e.preventDefault(); viser(vise + 1 >= choix.length ? 0 : vise + 1); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); viser(vise <= 0 ? choix.length - 1 : vise - 1); }
-        else if ((e.key === 'Enter' || e.key === 'Tab') && vise >= 0) { e.preventDefault(); prendre(vise); }
-        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fermer(); } // Échap referme la liste ; un second ferme la boîte
-      });
-      if (champ.value) setTimeout(proposer, 0);
-    }
-    d.showModal();
-    champ.focus(); champ.select();
-  });
-}
+// Confirmation et saisie dans l'interface (confirmer, saisir) et rendu de l'aide (markdownSimple) : dans commun.js,
+// partagé avec les pages séparées (Espaces Secours, groupes radioamateur).
 // Annonce avec un bouton « Annuler » pendant 6 secondes (actions réversibles)
 function annonceAnnulable(texte, annuler) {
   let z = document.getElementById('annonces');
@@ -210,20 +131,26 @@ function appliquerNiveau(n, memoriser) {
   rendreAccueil();
   if (document.querySelector('.vue.actif[data-vue="reglages"]')) rendreHubReglages();
 }
-// Ce qui n'apparaît qu'à partir d'un niveau (op = opérateur, exp = expert)
+// Ce qui n'apparaît qu'à partir d'un niveau (op = opérateur, exp = expert). Les entrées du menu Outils portent leur
+// niveau dans index.html (data-niveau) : rien à ajouter ici pour une nouvelle entrée. Restent ici les onglets, les
+// boutons et les couches créés ailleurs.
 function etiqueterNiveaux() {
   const op = ['.onglets [data-onglet="trafic"]', '.onglets [data-onglet="analyse"]', '#btn-couv-mesuree', '#btn-couvrir', '#btn-relier', '#btn-simulation', '#btn-plan-menu', '#btn-rejeu',
-    '#outil-usb', '#outil-ble', '#outil-portee', '#outil-rapport', '#outil-partager', '#lien-client', '#lien-flasher',
     '[data-couche="voisinage"]', '[data-couche="traceroute"]', '[data-couche="federation"]', '[data-couche="releves"]', '[data-couche="routiers"]'];
-  const exp = ['#outil-passerelle', '#outil-trafic', '#outil-france'];
   for (const s of op) document.querySelectorAll(s).forEach((e) => e.classList.add('niv-op'));
-  for (const s of exp) document.querySelectorAll(s).forEach((e) => e.classList.add('niv-exp'));
-  // Liens du menu Outils (topologie, configuration des répéteurs…) : opérateur ; ceux de simulation : expert
-  document.querySelectorAll('.menu-outils a.bascule').forEach((a) => { if (!a.classList.contains('niv-op')) a.classList.add(/topologie|simulation|configurer/i.test(a.textContent) ? 'niv-exp' : 'niv-op'); });
 }
 
 // ---- Rubriques : 5 groupes au-dessus des onglets d'origine ---------------------------------------------------
-const GROUPES = { reseau: ['reseau', 'noeuds', 'trafic', 'analyse', 'meshcore'], messages: ['messages', 'meshcore'], couverture: ['sites'], gerer: ['gestion', 'meshcore'], reglages: ['reglages'] };
+const GROUPES = { reseau: ['reseau', 'noeuds', 'trafic', 'analyse', 'meshcore'], operations: ['operations'], messages: ['messages', 'meshcore'], couverture: ['sites'], gerer: ['gestion', 'meshcore'], reglages: ['reglages'] };
+// Mode urgence et Secteurs d'alerte ne sont plus des lignes perdues dans le menu Outils ; ce sont les sources
+// d'#operations-sources (index.html), montrées ou non selon le rôle du compte (déjà réglé ailleurs : etat.gestion,
+// etat.admin). La rubrique Opérations n'apparaît elle-même que si au moins une de ces fonctions est ouverte.
+// D'autres fonctions de terrain (espaces de coordination, groupes radioamateur…) viendront s'y ajouter de la même façon.
+const SOURCES_OPERATIONS = [
+  { id: 'outil-urgence', ic: '🚨' },
+  { id: 'outil-secteurs', ic: '🗺️' },
+];
+const operationsDisponibles = () => SOURCES_OPERATIONS.some(({ id }) => { const e = document.getElementById(id); return e && !e.hidden; });
 const LIBELLES = {
   reseau: { reseau: 'Vue d’ensemble', meshcore: 'MeshCore' },
   messages: { messages: 'Meshtastic', meshcore: 'MeshCore' },
@@ -256,17 +183,55 @@ function majGroupes() {
     const g = b.dataset.groupe;
     b.classList.toggle('actif', g === ergo.groupe);
     b.setAttribute('aria-selected', g === ergo.groupe ? 'true' : 'false');
-    b.hidden = g !== 'reglages' && !GROUPES[g].some((o) => ongletVisible(o) && (o !== 'meshcore' || g === 'reseau' || (g === 'messages' && etat.membre) || (g === 'gerer' && etat.gestion)));
+    b.hidden = g === 'operations' ? !operationsDisponibles() : g !== 'reglages' && !GROUPES[g].some((o) => ongletVisible(o) && (o !== 'meshcore' || g === 'reseau' || (g === 'messages' && etat.membre) || (g === 'gerer' && etat.gestion)));
     // Nouveaux messages : la pastille de l'onglet Messages remonte sur la rubrique
     if (g === 'messages') { const p = (bOnglet('messages') || document).querySelector('.pastille, .badge, span'); let c = b.querySelector('.pastille-groupe'); const n = p ? p.textContent.trim() : ''; if (n && n !== '0') { if (!c) { c = document.createElement('span'); c.className = 'pastille-groupe'; b.appendChild(c); } c.textContent = n; } else if (c) c.remove(); }
   });
+  // La disponibilité des fonctions d'Opérations peut arriver après coup : le hub se retient à jour tant qu'il est à l'écran.
+  if (ergo.groupe === 'operations' && document.querySelector('.vue.actif[data-vue="operations"]')) rendreHubOperations();
+  majFilPositionCarte();
+}
+// Fil de position : « Rubrique › Onglet », cliquable pour remonter à la rubrique. Couvre la carte ; les pages
+// séparées (Espaces Secours, groupes radioamateur) ont le leur, posé par installerSocle (commun.js).
+function majFilPositionCarte() {
+  const f = document.getElementById('fil-position');
+  if (!f) return;
+  const bg = document.querySelector(`.groupes button[data-groupe="${ergo.groupe}"]`);
+  if (!bg || bg.hidden) { f.innerHTML = ''; return; }
+  const trad = (t) => (window.LANGUE && window.LANGUE !== 'fr' && typeof tr === 'function' ? tr(t) : t);
+  const nomRub = trad((bg.textContent || '').trim());
+  const bo = document.querySelector('.onglets button[data-onglet].actif');
+  const onglets = GROUPES[ergo.groupe] || [];
+  const nomOnglet = bo && onglets.includes(bo.dataset.onglet) && bo.dataset.onglet !== 'reglages' && bo.dataset.onglet !== 'operations' && onglets.length > 1 ? trad((bo.dataset.libelle || bo.textContent || '').trim()) : '';
+  f.innerHTML = `<button type="button" data-fil-rubrique>${esc(nomRub)}</button>${nomOnglet && nomOnglet !== nomRub ? ' › <span translate="no">' + esc(nomOnglet) + '</span>' : ''}`;
+  const br = f.querySelector('[data-fil-rubrique]'); if (br) br.onclick = () => allerGroupe(ergo.groupe);
 }
 function allerGroupe(g) {
   ergo.groupe = g;
   if (g === 'reglages') { bOnglet('reglages').click(); majGroupes(); if ($('#panneau').classList.contains('replie')) { const r = $('#deplier'); if (r) r.click(); } return; }
+  if (g === 'operations') { bOnglet('operations').click(); rendreHubOperations(); majGroupes(); if ($('#panneau').classList.contains('replie')) { const r = $('#deplier'); if (r) r.click(); } return; }
   const premier = GROUPES[g].find((o) => ongletVisible(o));
   if (!premier) { majGroupes(); return; }
   cliquerOnglet(premier, g);
+}
+// ---- Rubrique Opérations : les fonctions du jour J, reprises en tuiles ----------------------------------------
+function rendreHubOperations() {
+  const z = $('#hub-operations');
+  if (!z) return;
+  const ligne = (ic, nom, aide, id) => `<button type="button" class="ligne-reglage" data-go="${id}"><span class="ic" aria-hidden="true">${ic}</span><span><b>${esc(nom)}</b><small>${esc(aide)}</small></span><span class="chevron" aria-hidden="true">›</span></button>`;
+  const actions = {};
+  const lignes = [];
+  for (const { id, ic } of SOURCES_OPERATIONS) {
+    const el = document.getElementById(id);
+    if (!el || el.hidden) continue;
+    const a = 'o' + lignes.length;
+    actions[a] = () => el.click();
+    lignes.push(ligne(ic, (el.textContent || '').trim(), el.title || '', a));
+  }
+  z.innerHTML = lignes.length
+    ? `<div class="hub-reglages"><h3>🚨 Opérations</h3><p class="note">Ce qui sert le jour J, réuni ici plutôt que perdu dans le menu Outils.</p><div class="liste-reglages">${lignes.join('')}</div></div>`
+    : `<div class="hub-reglages"><p class="note">Aucune de ces fonctions n’est ouverte à ce compte pour l’instant.</p></div>`;
+  z.querySelectorAll('[data-go]').forEach((b) => (b.onclick = () => actions[b.dataset.go]()));
 }
 function cliquerOnglet(o, g) {
   const b = bOnglet(o);
@@ -470,32 +435,7 @@ async function ficheDiagnostic() {
 
 // ---- Aide intégrée (pages du wiki) ---------------------------------------------------------------------------
 const AIDE_PAR_ONGLET = { reseau: 'La-carte', noeuds: 'La-carte', trafic: 'Contrôle-du-trafic', analyse: 'La-carte', sites: 'Couverture-et-sites', gestion: 'Programmation-à-distance', messages: 'Messages', meshcore: 'MeshCore', reglages: 'Home' };
-function markdownSimple(md) {
-  const enLigne = (t) => esc(t)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
-    .replace(/!\[([^\]]*)\]\((https:[^)\s]+\.(?:jpg|png|webp))\)/g, '<img class="capture-aide" src="$2" alt="$1" loading="lazy">')
-    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => `<a href="#" data-aide="${(b || a).trim().replace(/ /g, '-')}">${a.trim()}</a>`)
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  const out = [];
-  let liste = null, code = false;
-  const fermerListe = () => { if (liste) { out.push(`</${liste}>`); liste = null; } };
-  for (const l of md.split('\n')) {
-    if (/^```/.test(l)) { fermerListe(); out.push(code ? '</pre>' : '<pre>'); code = !code; continue; }
-    if (code) { out.push(esc(l)); continue; }
-    let m;
-    if ((m = l.match(/^(#{1,4})\s+(.*)/))) { fermerListe(); const n = Math.min(4, m[1].length + 1); out.push(`<h${n}>${enLigne(m[2])}</h${n}>`); }
-    else if ((m = l.match(/^\s*[-*]\s+(.*)/))) { if (liste !== 'ul') { fermerListe(); out.push('<ul>'); liste = 'ul'; } out.push(`<li>${enLigne(m[1])}</li>`); }
-    else if ((m = l.match(/^\s*\d+\.\s+(.*)/))) { if (liste !== 'ol') { fermerListe(); out.push('<ol>'); liste = 'ol'; } out.push(`<li>${enLigne(m[1])}</li>`); }
-    else if (/^\s*\|/.test(l)) { fermerListe(); if (!/^\s*\|[\s:|-]+\|\s*$/.test(l)) out.push(`<p class="ligne-tableau">${enLigne(l.replace(/^\s*\||\|\s*$/g, '').replace(/\|/g, ' · '))}</p>`); }
-    else if (!l.trim()) fermerListe();
-    else { fermerListe(); out.push(`<p>${enLigne(l)}</p>`); }
-  }
-  fermerListe();
-  if (code) out.push('</pre>');
-  return out.join('\n');
-}
+// markdownSimple : dans commun.js, partagé avec les pages séparées.
 async function ouvrirAide(page) {
   if (!page) { const a = document.querySelector('.onglets button[data-onglet].actif'); page = AIDE_PAR_ONGLET[a ? a.dataset.onglet : 'reseau'] || 'Home'; }
   $('#fiche').hidden = false; etat.selection = null;
