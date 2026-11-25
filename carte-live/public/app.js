@@ -7142,6 +7142,8 @@ async function demarrer() {
     document.body.appendChild(b);
   }
   document.title = etat.config.titre;
+  // Groupe radioamateur : lien montré aux seuls membres validés (et aux administrateurs, qui le règlent)
+  if (etat.membre && !etat.consultation) api('/api/adrasec/acces').then((a) => { const l = $('#outil-adrasec'); if (l && a.acces) { l.hidden = false; l.textContent = '🛰️ ' + (a.nom || 'Groupe radioamateur'); } }).catch(() => {});
   // Espaces Secours : seuls les administrateurs de la carte les créent ; leurs membres entrent par l'adresse de
   // leur espace, sans compte sur la carte
   if (etat.admin && !etat.consultation) { const l = $('#outil-secours'); if (l) l.hidden = false; }

@@ -150,6 +150,7 @@ const SOURCES_OPERATIONS = [
   { id: 'outil-urgence', ic: '🚨' },
   { id: 'outil-secteurs', ic: '🗺️' },
   { id: 'outil-secours', ic: '⛑️' },
+  { id: 'outil-adrasec', ic: '🛰️' },
 ];
 const operationsDisponibles = () => SOURCES_OPERATIONS.some(({ id }) => { const e = document.getElementById(id); return e && !e.hidden; });
 const LIBELLES = {

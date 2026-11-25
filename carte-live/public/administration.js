@@ -910,12 +910,19 @@ async function rendreComptes() {
   const z = $('#pan-comptes');
   let liste;
   try { liste = await api('/api/comptes'); } catch (e) { z.innerHTML = `<div class="vide">${esc(e.message)}</div>`; return; }
+  // Groupes radioamateur (généralisation de la section « ADRASEC » française) : case par compte, groupe(s) et responsable
+  const ad = await api('/api/adrasec/roles').catch(() => null);
+  const caseGroupe = (c) => {
+    const r = (ad.roles || {})[c.id], gr = ad.groupes || [];
+    return `<td class="col-adrasec"><div class="adrasec-compte"><label class="case" title="Membre d’un groupe radioamateur : ouvre son espace (main courante, radiogoniométrie, équipes)"><input type="checkbox" data-adrasec ${r ? 'checked' : ''}> ${r && gr.length <= 1 ? esc((gr[0] || {}).nom || 'Groupe') : 'Groupe'}</label>${r && (r.groupes || []).length > 1 ? `<small class="note" title="Ce compte est membre de plusieurs groupes : ses fiches et le rôle de responsable se règlent dans la page du groupe, onglet Gestion">${esc(r.groupes.map((k) => (gr.find((g) => g.code === k) || {}).nom || 'Groupe ' + k).join(' + '))}</small>` : r && gr.length > 1 ? `<select data-adrasec-groupe class="mini">${gr.map((g) => `<option value="${esc(g.code)}" ${g.code === r.groupe ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select>` : ''}${r && (r.groupes || []).length <= 1 ? `<label class="case" title="Responsable de son groupe : accepte les demandes, intègre les membres et gère le groupe, sans être administrateur de la carte"><input type="checkbox" data-adrasec-pres ${r.president ? 'checked' : ''}> Responsable</label>` : ''}</div></td>`;
+  };
   const STATUTS = { actif: 'Actif', en_attente: 'À valider', desactive: 'Désactivé' };
   z.innerHTML = `
-    <table class="voisins comptes"><thead><tr><th>Identifiant</th><th>Indicatif</th><th>Rôle</th><th>Statut</th><th>Dernière connexion</th><th></th></tr></thead><tbody>
+    <table class="voisins comptes"><thead><tr><th>Identifiant</th><th>Indicatif</th><th>Rôle</th>${ad ? '<th>Groupe radio</th>' : ''}<th>Statut</th><th>Dernière connexion</th><th></th></tr></thead><tbody>
     ${liste.map((c) => `<tr data-id="${c.id}">
       <td><b>${esc(c.identifiant)}</b> <button class="mini" data-fiche title="Modifier l’identifiant, l’indicatif ou l’e-mail de ce compte">✏️</button>${c.email ? `<br><small>${esc(c.email)}</small>` : ''}</td><td>${esc(c.indicatif || '–')}</td>
       <td><select data-role>${['membre', 'gestionnaire', 'admin'].map((r) => `<option value="${r}" ${c.role === r ? 'selected' : ''}>${ROLES_COMPTE[r]}</option>`).join('')}</select>${c.role === 'gestionnaire' ? `<br><button class="mini" data-secteur>Secteur : ${(c.noeuds || []).length} nœud(s)…</button>` : ''}</td>
+      ${ad ? caseGroupe(c) : ''}
       <td><span class="badge ${c.statut === 'actif' ? 'actif' : c.statut === 'en_attente' ? 'attente' : 'inactif'}">${STATUTS[c.statut] || c.statut}</span>${c.deuxFacteurs ? ' <span class="badge actif" title="Double authentification activée">2FA</span>' : ''}${c.reinitDemande ? `<br><span class="badge attente" title="Demande faite le ${new Date(c.reinitDemande).toLocaleString()}">🔑 mot de passe oublié</span>` : ''}</td>
       <td>${c.derniere ? ilYa(c.derniere) : 'jamais'}</td>
       <td class="actions-ligne">${c.statut === 'en_attente' ? '<button data-statut="actif" class="principal">Valider</button>' : c.statut === 'actif' ? '<button data-statut="desactive">Désactiver</button>' : '<button data-statut="actif">Réactiver</button>'}<button data-lien-mdp class="${c.reinitDemande ? 'principal' : ''}" title="Mot de passe oublié : créer un lien (24 h, usage unique) pour que cette personne choisisse un nouveau mot de passe">🔑 Lien</button>${c.deuxFacteurs ? '<button data-retirer-2fa title="Téléphone perdu : retirer la double authentification de ce compte">Retirer 2FA</button>' : ''}<button data-deco title="Fermer toutes les sessions ouvertes de ce compte">Déconnecter</button><button data-suppr title="Supprimer">✕</button></td>
@@ -931,7 +938,8 @@ async function rendreComptes() {
     </form>
     <p class="erreur" id="retour-comptes"></p>
     <div id="edition-secteur"></div>
-    <p class="note">Un <b>membre</b> voit les messages texte et les positions exactes. Un <b>gestionnaire de secteur</b> programme à distance, remplit la fiche d’installation et teste (traceroute) les seuls nœuds de son secteur, Meshtastic ou MeshCore. Un <b>administrateur</b> gère en plus les comptes, les réglages, les modules et tous les nœuds.</p>`;
+    <p class="note">Un <b>membre</b> voit les messages texte et les positions exactes. Un <b>gestionnaire de secteur</b> programme à distance, remplit la fiche d’installation et teste (traceroute) les seuls nœuds de son secteur, Meshtastic ou MeshCore. Un <b>administrateur</b> gère en plus les comptes, les réglages, les modules et tous les nœuds.</p>
+    ${ad ? '<p class="note">Groupe radio : la case ouvre l’espace du groupe radioamateur au compte. Responsable : il gère son groupe et en intègre les membres.</p>' : ''}`;
   const retour = (t) => ($('#retour-comptes').textContent = t);
   const action = async (fn) => { try { await fn(); rendreComptes(); } catch (e) { retour(e.message); } };
   // Enregistre toutes les fiches ouvertes d'un coup (plusieurs noms changés avant de cliquer : aucun n'est perdu)
@@ -982,6 +990,14 @@ async function rendreComptes() {
         boite.scrollIntoView({ block: 'nearest' });
       } catch (e) { alert(e.message); }
     };
+    const ca = tr.querySelector('[data-adrasec]');
+    if (ca) {
+      const r = (ad.roles || {})[id], groupe = () => (tr.querySelector('[data-adrasec-groupe]') || {}).value || (r && r.groupe) || 'AUTO';
+      const envoyer = (corps) => action(() => postJson(`/api/adrasec/roles/${id}`, corps, 'PUT'));
+      ca.onchange = () => envoyer(ca.checked ? { groupe: 'AUTO' } : { groupe: '' });
+      const sg = tr.querySelector('[data-adrasec-groupe]'); if (sg) sg.onchange = () => envoyer({ groupe: sg.value });
+      const cp = tr.querySelector('[data-adrasec-pres]'); if (cp) cp.onchange = () => envoyer({ groupe: groupe(), president: cp.checked });
+    }
     const bsec = tr.querySelector('[data-secteur]');
     if (bsec) bsec.onclick = () => editerSecteur(liste.find((c) => String(c.id) === id), () => rendreComptes());
   });

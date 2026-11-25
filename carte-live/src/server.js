@@ -239,7 +239,7 @@ function pageVersionnee(fichier) {
   }
   return pagesVersionnees.get(fichier);
 }
-const NOMS_PAGES = { 'index.html': 'carte', 'publique.html': 'page publique', 'rejoindre.html': 'rejoindre', 'adrasec.html': 'ADRASEC', 'secours.html': 'secours', 'terrain.html': 'lien terrain' };
+const NOMS_PAGES = { 'index.html': 'carte', 'publique.html': 'page publique', 'rejoindre.html': 'rejoindre', 'adrasec.html': 'groupes radioamateur', 'secours.html': 'secours', 'terrain.html': 'lien terrain' };
 const envoyerPage = (fichier) => (req, res) => {
   try { frequentation.noter(req, /CarteLiveAndroid/.test(req.get('user-agent') || '') ? 'appli Android' : NOMS_PAGES[fichier] || fichier.replace(/\.html$/, '')); } catch { /* comptage sans importance */ }
   res.set('Cache-Control', 'no-cache').type('html').send(pageVersionnee(fichier));
@@ -3529,15 +3529,37 @@ function traiterMessageMqtt(topic, message) {
     traiterEnveloppeMt(topic, message);
   } finally { noterTache(nom, performance.now() - t0); }
 }
+// Paquet décodé (MQTT, module de la carte, modules en écoute) : à qui revient-il ? Un seul endroit le décide.
+// Un espace Secours prend ce qui vient de ses nœuds (messages, points de passage) et ce qui passe sur son canal
+// réservé : la carte ne le montre alors ni dans ses messages, ni dans ses signalements, ni à la passerelle, ni aux
+// équipes de la carte, ni à un groupe radioamateur (evt.reserve : le texte n'est pas gardé par reseau.integrer). La
+// détection d'un message de détresse (mode urgence) reste active pour tous les nœuds.
+function versSections(evt) {
+  let pris = false;
+  try { pris = !!secours.recu(evt); } catch { /* pas encore prêt */ }
+  if (pris) {
+    evt.reserve = true; evt.contenu = null; if (evt.port !== 'texte') evt.resume = 'Réservé à un espace Secours';
+    // Un nœud peut aussi être celui d'un membre d'un groupe radioamateur : son message direct lui parvient, pas ce
+    // qui passe sur le canal réservé à un espace
+    if (evt.port === 'texte' && evt.texte && !secours.surCanalReserve(evt)) { try { adrasec.texteRecu(evt); } catch { /* pas encore prêt */ } }
+  } else {
+    if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
+    versPasserelleRadio(evt);
+    if (evt.port === 'texte' && evt.texte) {
+      if (/^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } }
+      try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ }
+      try { adrasec.texteRecu(evt); } catch { /* pas encore prêt */ }
+    }
+  }
+  crisePaquet(evt);
+}
 // Enveloppe Meshtastic (MQTT, ou paquet du réseau local remis sous forme d'enveloppe) : décodage puis carte
 function traiterEnveloppeMt(topic, message) {
   try {
     const evt = decoderMessage(topic, message, canaux);
     if (!evt) return;
     if (evt.genre === 'erreur') { compteur.erreurs++; return; }
-    if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    versPasserelleRadio(evt);
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } } crisePaquet(evt);
+    versSections(evt);
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuserMembres({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
     try { autresPresets.noterPaquet(evt); } catch { /* pas encore prêt */ }
@@ -3864,9 +3886,7 @@ app.post('/api/mc/maintenance/conformite', (req, res) => {
 });
 const sourceRadio = creerSourceRadio(stockage, config, canaux, {
   integrerEvenement: (evt) => {
-    if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    versPasserelleRadio(evt);
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } } crisePaquet(evt);
+    versSections(evt);
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuserMembres({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
     try { autresPresets.noterPaquet(evt); } catch { /* pas encore prêt */ }
@@ -3884,9 +3904,7 @@ const ecoutes = creerEcoutes({
   config, journal,
   fabriquerRadio: (m) => creerSourceRadio(stockage, config, canaux, {
     integrerEvenement: (evt) => {
-      if (evt.port === 'waypoint' && evt.pointRepere) { try { signalements.recu(evt); } catch { /* pas encore prêt */ } }
-    versPasserelleRadio(evt);
-    if (evt.port === 'texte' && evt.texte && /^Pager ACK/i.test(evt.texte)) { try { signalements.texteRecu(evt); } catch { /* pas encore prêt */ } } if (evt.port === 'texte' && evt.texte) { try { equipes.texteRecu(evt); } catch { /* pas encore prêt */ } } crisePaquet(evt);
+    versSections(evt);
     if (evt.port === 'position' && evt.position && evt.position.lat != null) { try { const d = administration.reponsePosition(evt.de); if (d != null) diffuserMembres({ genre: 'position-reponse', num: evt.de >>> 0, lat: evt.position.lat, lon: evt.position.lon, delai: d }); } catch { /* pas encore prêt */ } }
     const sortie = reseau.integrer(evt);
     try { autresPresets.noterPaquet(evt); } catch { /* pas encore prêt */ }
@@ -3918,6 +3936,13 @@ const jeuxCanaux = require('./jeux-canaux').creerJeuxCanaux({ config, chiffreur:
 const { planifier: planifierCanaux } = require('./jeux-canaux');
 function jeuxPour(u) {
   const l = [{ ...jeuxCanaux.vue('carte', u.role === 'admin'), titre: config.carte.titre || 'Carte live', modifiable: u.role === 'admin' }];
+  if (adrasec.actif()) {
+    const codes = u.role === 'admin' ? adrasec.groupes().map((g) => g.code) : adrasec.groupesDe(u);
+    for (const code of codes) {
+      const G = adrasec.groupePour(u, code);
+      if (G) l.push({ ...jeuxCanaux.vue('adrasec:' + code, G.estResponsable(u)), titre: G.g.nom, modifiable: G.estResponsable(u) });
+    }
+  }
   return l.filter((j) => j.canaux.length || j.modifiable);
 }
 const routeCompte = (f) => async (req, res) => {
@@ -3933,6 +3958,7 @@ app.put('/api/jeux-canaux/carte', (req, res) => {
 // Portées qu'un compte a le droit d'écrire sur sa radio
 function porteesPermises(u) {
   const l = ['carte'];
+  if (adrasec.actif()) { if (u.role === 'admin') l.push(...adrasec.groupes().map((g) => 'adrasec:' + g.code)); else l.push(...adrasec.groupesDe(u).map((c) => 'adrasec:' + c)); }
   return l;
 }
 // Radio d'une passerelle de page, si elle appartient à ce compte (un administrateur : aussi le module principal)
@@ -4223,6 +4249,138 @@ app.put('/api/secours/:code/mot-de-passe', routeSecours((req, b, e, compte) => {
   req.res.setHeader('Set-Cookie', cookieSecours(req, secours.jeton(e, compte), e.comptes.DUREE_SESSION / 1000));
   return { ok: true };
 }));
+// ---- Groupes radioamateur (généralisation de la section « ADRASEC » française) : radiogoniométrie, main courante,
+// Winlink par Pat. Un groupe a un nom libre et une zone facultative (texte libre) ; un compte peut appartenir à
+// plusieurs groupes à la fois. Voir adrasec.js : seule la clé d'appartenance change (groupe libre, pas un département).
+const radioPointAdrasec = async ({ texte, canal, ...p }) => {
+  signalements.envoyerPoint({ ...p, canal });
+  if (texte) { await new Promise((r) => setTimeout(r, 400)); administration.envoyerTexte({ texte: signalements.couper(texte, 200), canal }, 'Groupe radio'); }
+};
+const adrasec = require('./adrasec').creerAdrasec({ config, journal, diffuser, radioPoint: radioPointAdrasec,
+  // Canaux déclarés par un groupe : le message radio d'un opérateur membre de plusieurs groupes va à celui du canal utilisé
+  canauxSection: (code) => jeuxCanaux.vue('adrasec:' + code).canaux.map((c) => c.nom),
+  // Options d'un groupe : messages aux équipes (sur un canal, avec accusé), batterie et trajets des nœuds des membres
+  radioTexte: ({ texte, canal }, auteur) => administration.envoyerTexte({ texte, canal }, auteur), etatEnvoi: (n) => administration.etatEnvoi(n),
+  radioConnecte: () => { try { return !!signalements.canaux().mt.connecte; } catch { return false; } },
+  santeDe: (num) => { try { const r = reqSanteSecours.get(num >>> 0); return r ? { batterie: r.batterie, tension: r.tension, heure: r.heure_telemetrie } : null; } catch { return null; } },
+  traceDe: (num, depuis) => { try { return reqTraceSecours.all(num >>> 0, depuis); } catch { return []; } },
+  // Équipe d'un groupe supprimée (ou le groupe lui-même) : ses secteurs d'alerte la perdent, comme pour une équipe de la carte
+  surEquipeSupprimee: (cle) => { if (secteursAlerte.equipeSupprimee(cle)) planifierRafraichir(); },
+  nomDe: (n) => { const r = reqNomSig.get(n >>> 0); return r && (r.nom_long || r.nom_court); }, positionDe: (num) => { try { const r = reqPosEquipe.get(num >>> 0); return r && r.lat != null ? { lat: r.lat, lon: r.lon, heure: r.heure_position || 0 } : null; } catch { return null; } } });
+const winlink = require('./winlink').creerWinlink({ journal });
+// Groupe radioamateur du compte (un membre de plusieurs groupes, ou un administrateur de la carte, choisit celui qu'il
+// consulte : ?g=RC1) ; membre, responsable ou administrateur de la carte, qui règle le groupe même désactivé
+const routeAdrasec = (f, { admin = false, licencie = false } = {}) => async (req, res) => {
+  const u = utilisateur(req);
+  if (!u) return res.status(401).json({ erreur: 'Connexion requise' });
+  if (!(u.role === 'admin' || adrasec.estMembre(u))) return res.status(403).json({ erreur: 'Réservé aux membres d’un groupe radioamateur' });
+  const G = adrasec.groupePour(u, String(req.query.g || '').slice(0, 8) || null);
+  if (!G) return res.status(404).json({ erreur: 'Aucun groupe radioamateur créé sur cette carte : créez-en un dans l’onglet Gestion', aucune: true });
+  if (admin && !G.estResponsable(u)) return res.status(403).json({ erreur: `Réservé aux responsables de ${G.g.nom}` });
+  if (licencie && !G.estLicencie(u)) return res.status(403).json({ erreur: 'Réservé aux radioamateurs licenciés (indicatif validé par un responsable ou un administrateur)' });
+  try { res.set('Cache-Control', 'no-store').json(await f(req, req.body || {}, u, G)); } catch (e) { res.status(400).json({ erreur: e.message }); }
+};
+app.get('/adrasec', envoyerPage('adrasec.html'));
+app.get('/adrasec.html', envoyerPage('adrasec.html'));
+app.get('/api/adrasec/acces', (req, res) => {
+  const u = utilisateur(req), dm = adrasec.demandeDe(u), mien = adrasec.groupeDe(u);
+  res.set('Cache-Control', 'no-store').json({ nom: mien ? adrasec.nomGroupe(mien) : 'Groupe radioamateur', actif: adrasec.actif(), connecte: !!u, identifiant: u ? u.identifiant : null, indicatif: u ? u.indicatif || null : null,
+    demande: dm ? { heure: dm.heure, nomGroupe: dm.nomGroupe } : null, groupes: adrasec.groupes().map((x) => ({ code: x.code, nom: x.nom })), inscriptions: config.inscriptions, acces: !!u && (u.role === 'admin' || adrasec.estMembre(u)) });
+});
+// Demande d'adhésion : tout compte connecté de la carte peut la faire, pour le groupe de son choix ; le responsable l'accepte
+app.post('/api/adrasec/demande', (req, res) => { const u = utilisateur(req); if (!u) return res.status(401).json({ erreur: 'Connexion requise' }); try { res.json(adrasec.demander(u, req.body || {})); } catch (e) { res.status(400).json({ erreur: e.message }); } });
+app.delete('/api/adrasec/demandes/:compte', routeAdrasec((req, b, u, G) => G.refuserDemande(req.params.compte, nomCompte(u)), { admin: true }));
+// Groupes hébergés (administrateur de la carte) : création, nom, suppression
+app.put('/api/adrasec/groupes/:code', (req, res) => { const u = utilisateur(req); if (!u || u.role !== 'admin') return res.status(403).json({ erreur: 'Réservé aux administrateurs de la carte' }); try { res.json(adrasec.majGroupe(req.params.code, req.body || {}, nomCompte(u))); } catch (e) { res.status(400).json({ erreur: e.message }); } });
+app.get('/api/adrasec/canaux', routeAdrasec((req, b, u, G) => ({ ...jeuxCanaux.vue('adrasec:' + G.g.code, G.estResponsable(u)), modifiable: G.estResponsable(u) })));
+app.put('/api/adrasec/canaux', routeAdrasec((req, b, u, G) => jeuxCanaux.definir('adrasec:' + G.g.code, b.canaux, nomCompte(u)), { admin: true }));
+app.get('/api/adrasec/roles', (req, res) => { const u = utilisateur(req); if (!u || u.role !== 'admin') return res.status(403).json({ erreur: 'Réservé aux administrateurs de la carte' }); res.set('Cache-Control', 'no-store').json(adrasec.rolesComptes()); });
+app.put('/api/adrasec/roles/:compte', (req, res) => { const u = utilisateur(req); if (!u || u.role !== 'admin') return res.status(403).json({ erreur: 'Réservé aux administrateurs de la carte' }); try { res.json(adrasec.roleCompte(req.params.compte, req.body || {}, nomCompte(u))); } catch (e) { res.status(400).json({ erreur: e.message }); } });
+app.get('/api/adrasec', routeAdrasec((req, b, u, G) => ({ ...adrasec.vue(u, comptes.lister(), G), winlink: { configure: winlink.actif(), autorise: winlinkAutorise(u, G), adrasec: adrasec.nomGroupe(adrasecWinlink()) } })));
+// Réglages : activation sur la carte (administrateur) ; nom et conservation du groupe (responsable)
+app.put('/api/adrasec/reglages', (req, res, next) => {
+  const u = utilisateur(req), b = req.body || {};
+  if (b.actif === undefined) return next();
+  if (!u || u.role !== 'admin') return res.status(403).json({ erreur: 'Réservé aux administrateurs de la carte' });
+  const r = adrasec.reglagesGlobaux({ actif: b.actif });
+  if (b.nom === undefined && b.conservationJours === undefined) return res.json(r);
+  next();
+}, routeAdrasec((req, b, u, G) => (b.nom !== undefined || b.conservationJours !== undefined || b.options !== undefined || b.macros !== undefined ? G.reglages(b) : { ok: true }), { admin: true }));
+// Points de rassemblement (tout membre), messages aux équipes par radio et trajets des membres (options du groupe)
+app.post('/api/adrasec/reperes', routeAdrasec((req, b, u, G) => G.majRepere(null, b, u)));
+app.patch('/api/adrasec/reperes/:id', routeAdrasec((req, b, u, G) => G.majRepere(req.params.id, b, u)));
+app.post('/api/adrasec/reperes/:id/diffuser', routeAdrasec((req, b, u, G) => G.diffuserRepere(req.params.id, b, u)));
+app.post('/api/adrasec/messages', routeAdrasec((req, b, u, G) => { G.envoyerMessage(u, b); return { ok: true }; }));
+app.get('/api/adrasec/membres/:compte/trace', routeAdrasec((req, b, u, G) => G.trace(req.params.compte, req.query.heures)));
+app.put('/api/adrasec/membres/:compte', routeAdrasec((req, b, u, G) => G.majMembre(req.params.compte, b, nomCompte(u), u.role === 'admin'), { admin: true }));
+app.post('/api/adrasec/equipes', routeAdrasec((req, b, u, G) => G.majEquipe(null, b), { admin: true }));
+app.patch('/api/adrasec/equipes/:id', routeAdrasec((req, b, u, G) => G.majEquipe(req.params.id, b), { admin: true }));
+app.post('/api/adrasec/main-courante', routeAdrasec((req, b, u, G) => G.ajouterMc(u, b)));
+app.get('/api/adrasec/main-courante.csv', (req, res) => {
+  const u = utilisateur(req);
+  const G = u && (u.role === 'admin' || adrasec.estMembre(u)) ? adrasec.groupePour(u, String(req.query.g || '').slice(0, 8) || null) : null;
+  if (!G) return res.status(403).json({ erreur: 'Réservé au groupe' });
+  res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', `attachment; filename="main-courante-${G.g.code}-${new Date().toISOString().slice(0, 10)}.csv"`).send(G.csvMc());
+});
+// Transfert du groupe vers une autre carte : export d'un fichier ici, import là-bas (responsable ou administrateur de
+// la carte). Le fichier emporte équipes, fiches métier, main courante, recherches et relevés.
+// Aucun compte, mot de passe, condensat ni jeton (pas même celui d'un lien terrain) : chacun crée son compte sur la
+// carte d'arrivée par le lien d'invitation, et sa fiche métier l'y attend.
+app.get('/api/adrasec/export.json', (req, res) => {
+  const u = utilisateur(req);
+  const G = u && (u.role === 'admin' || adrasec.estMembre(u)) ? adrasec.groupePour(u, String(req.query.g || '').slice(0, 8) || null) : null;
+  if (!G) return res.status(403).json({ erreur: 'Réservé au groupe' });
+  if (!G.estResponsable(u)) return res.status(403).json({ erreur: `Réservé aux responsables de ${G.g.nom}` });
+  const doc = G.exporter();
+  audit.noter(nomCompte(u), req.ip, 'Groupe radio : groupe exporté', `${G.g.nom} · ${doc.membres.length} fiche(s), ${doc.equipes.length} équipe(s), ${doc.mainCourante.length} entrée(s) de main courante, ${doc.recherches.length} recherche(s), ${doc.releves.length} relevé(s)`, true);
+  res.set('Content-Type', 'application/json; charset=utf-8').set('Cache-Control', 'no-store')
+    .set('Content-Disposition', `attachment; filename="adrasec-${G.g.code}-${new Date().toISOString().slice(0, 10)}.json"`)
+    .send(JSON.stringify(doc, null, 1));
+});
+app.post('/api/adrasec/import', routeAdrasec((req, b, u, G) => {
+  const r = G.importer(b.fichier, comptes.lister(), { appliquer: !!b.appliquer }, nomCompte(u));
+  if (b.appliquer) audit.noter(nomCompte(u), req.ip, 'Groupe radio : groupe importé', `${G.g.nom} ← ${r.section} · ${r.rattaches.length} rattaché(s), ${r.attentes.length} en attente, ${r.equipesCreees.length} équipe(s), ${r.mainCourante.nouvelles} entrée(s) de main courante, ${r.recherches.nouvelles} recherche(s), ${r.releves.nouveaux} relevé(s)`, true);
+  return r;
+}, { admin: true }));
+app.delete('/api/adrasec/attentes/:id', routeAdrasec((req, b, u, G) => G.retirerAttente(String(req.params.id), nomCompte(u)), { admin: true }));
+app.post('/api/adrasec/recherches', routeAdrasec((req, b, u, G) => G.majRecherche(null, b, u)));
+app.patch('/api/adrasec/recherches/:id', routeAdrasec((req, b, u, G) => G.majRecherche(req.params.id, b, u)));
+app.post('/api/adrasec/releves', routeAdrasec((req, b, u, G) => G.ajouterReleve(u, b)));
+app.delete('/api/adrasec/releves/:id', routeAdrasec((req, b, u, G) => G.retirerReleve(u, req.params.id)));
+app.patch('/api/adrasec/releves/:id', routeAdrasec((req, b, u, G) => G.majReleve(u, req.params.id, b)));
+// Canaux du module radio de la carte (choix du canal d'une diffusion). Adresse à part : /api/adrasec/canaux est le
+// jeu de canaux du groupe, déclaré plus haut, et masquait cette route.
+app.get('/api/adrasec/canaux-radio', routeAdrasec(() => { try { return signalements.canaux().mt; } catch { return { connecte: false, canaux: [] }; } }));
+app.post('/api/adrasec/recherches/:id/diffuser', routeAdrasec((req, b, u, G) => G.diffuserBalise(req.params.id, b, u)));
+app.get('/api/adrasec/qr', routeAdrasec(async (req) => ({ qr: await require('qrcode').toDataURL(String(req.query.u || '').slice(0, 300), { margin: 1, width: 240 }) })));
+app.post('/api/adrasec/recherches/:id/lien', routeAdrasec((req, b, u, G) => G.creerLien(req.params.id, u)));
+app.delete('/api/adrasec/recherches/:id/lien', routeAdrasec((req, b, u, G) => G.couperLien(req.params.id, u)));
+// Lien terrain : lecture seule, sans compte (jeton secret de 128 bits, valable jusqu'à la clôture de la recherche)
+app.get('/terrain/:jeton', envoyerPage('terrain.html'));
+app.get('/api/terrain/:jeton', (req, res) => {
+  const v = adrasec.vueTerrain(req.params.jeton);
+  if (!v) return res.status(404).json({ erreur: 'Lien terrain expiré ou recherche terminée' });
+  res.set('Cache-Control', 'no-store').set('Referrer-Policy', 'no-referrer').json(v);
+});
+// Boîte Winlink : réservée au groupe qui utilise la station (PAT_GROUPE_RADIO) et aux administrateurs de la carte ;
+// rédaction et sessions : radioamateurs licenciés de ce groupe
+const adrasecWinlink = () => String(process.env.PAT_GROUPE_RADIO || '').trim().toUpperCase();
+const winlinkAutorise = (u, G) => u.role === 'admin' || G.g.code === adrasecWinlink();
+const gardeWinlink = (f) => (req, b, u, G) => { if (!winlinkAutorise(u, G)) throw new Error(`La station Winlink de cette carte est réservée à ${adrasec.nomGroupe(adrasecWinlink())}`); return f(req, b, u, G); };
+app.get('/api/adrasec/winlink/etat', routeAdrasec(gardeWinlink(() => winlink.etat())));
+app.get('/api/adrasec/winlink/boite/:nom', routeAdrasec(gardeWinlink((req) => winlink.boite(req.params.nom))));
+app.get('/api/adrasec/winlink/boite/:nom/:mid', routeAdrasec(gardeWinlink((req) => winlink.message(req.params.nom, req.params.mid))));
+app.get('/api/adrasec/winlink/passerelles', routeAdrasec(gardeWinlink((req) => winlink.passerelles({ mode: String(req.query.mode || '').slice(0, 20), bande: String(req.query.bande || '').slice(0, 10) }))));
+app.post('/api/adrasec/winlink/envoyer', routeAdrasec(gardeWinlink(async (req, b, u, G) => {
+  const r = await winlink.envoyer({ ...b, signature: `${G.signature(u)} · ${G.g.nom}` });
+  G.ajouterMc(u, { texte: `Winlink : message « ${String(b.sujet || '').slice(0, 80)} » déposé pour ${String(b.a || '').slice(0, 80)}`, type: 'message-emis' });
+  return r;
+}), { licencie: true }));
+app.post('/api/adrasec/winlink/session', routeAdrasec(gardeWinlink(async (req, b, u, G) => {
+  const r = await winlink.session(b.cible, G.signature(u));
+  G.ajouterMc(u, { texte: `Winlink : session ${String(b.cible).split('?')[0]} terminée${r.recus != null ? `, ${r.recus} message(s) reçu(s)` : ''}`, type: 'information' });
+  return r;
+}), { licencie: true }));
 // Demande de position à un ou plusieurs nœuds (gestionnaire) : le nœud répond avec sa position
 app.post('/api/demander-position', async (req, res) => {
   const u = utilisateur(req);
