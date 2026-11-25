@@ -7142,6 +7142,9 @@ async function demarrer() {
     document.body.appendChild(b);
   }
   document.title = etat.config.titre;
+  // Espaces Secours : seuls les administrateurs de la carte les créent ; leurs membres entrent par l'adresse de
+  // leur espace, sans compte sur la carte
+  if (etat.admin && !etat.consultation) { const l = $('#outil-secours'); if (l) l.hidden = false; }
   setTimeout(() => { try { appliquerFonctionsMasquees(); } catch { /* carte pas encore prête */ } }, 0);
   // Couches : masquées par défaut sur cette carte (CARTE_COUCHES_MASQUEES), puis choix du visiteur
   for (const c of etat.config.couchesMasquees || []) if (c in etat.couches) etat.couches[c] = false;

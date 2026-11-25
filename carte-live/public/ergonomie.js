@@ -149,6 +149,7 @@ const GROUPES = { reseau: ['reseau', 'noeuds', 'trafic', 'analyse', 'meshcore'],
 const SOURCES_OPERATIONS = [
   { id: 'outil-urgence', ic: '🚨' },
   { id: 'outil-secteurs', ic: '🗺️' },
+  { id: 'outil-secours', ic: '⛑️' },
 ];
 const operationsDisponibles = () => SOURCES_OPERATIONS.some(({ id }) => { const e = document.getElementById(id); return e && !e.hidden; });
 const LIBELLES = {
