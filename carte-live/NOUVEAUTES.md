@@ -2,6 +2,11 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.12.0
+
+### 🔷 Shapes, not just colors, for Meshtastic nodes
+- **Legend and markers: one shape per category**, matching what MeshCore roles already had. Until now only color told apart relays, clients, muted/hidden clients, trackers/sensors and unknowns — hard to tell apart for colorblind users or on a small screen. Now: diamond for relays/routers, filled circle for clients, hollow ring for muted/hidden, triangle for trackers/sensors, square for unknowns.
+
 ## 1.11.0
 
 ### 📨 Winlink: live status over Pat's WebSocket
