@@ -506,7 +506,15 @@
   }
 
   // ---- Winlink --------------------------------------------------------------------------------------------------
-  let boite = 'in';
+  let boite = 'in', etatWinlinkConnu = null; // dernier état connu : évite de réinterroger Pat pour un simple rafraîchissement de badge
+  // Statut de connexion mis à jour sans tout redessiner (évite de perdre le focus d'un champ en cours de saisie)
+  function majBadgeWinlink(et) {
+    etatWinlinkConnu = et;
+    const b = $('#wl-badge');
+    if (!b) return; // onglet Winlink pas affiché : rien à mettre à jour tout de suite, rendreWinlink relira l'état à l'ouverture
+    b.outerHTML = et.joignable ? `<p id="wl-badge">Pat joignable${et.indicatif ? ' · station <b class="mono">' + esc(et.indicatif) + '</b>' : ''} · ${et.connecte ? '<span class="pastille ok">session en cours</span>' : et.appel ? '<span class="pastille att">appel…</span>' : '<span class="pastille">au repos</span>'}</p>`
+      : `<p id="wl-badge"><span class="erreur">${esc(et.erreur || 'Pat injoignable')}</span></p>`;
+  }
   async function rendreWinlink() {
     const v = $('#vue-winlink');
     if (!E) return;
@@ -522,9 +530,10 @@
     }
     v.innerHTML = '<h2>Winlink</h2><div class="vide">Interrogation de Pat…</div>';
     const et = await api('/api/adrasec/winlink/etat').catch((e) => ({ joignable: false, erreur: e.message }));
+    etatWinlinkConnu = et;
     const lic = E.moi.licencie;
     v.innerHTML = `<h2>Winlink</h2>
-      <p>${et.joignable ? `Pat joignable${et.indicatif ? ' · station <b class="mono">' + esc(et.indicatif) + '</b>' : ''} · ${et.connecte ? '<span class="pastille ok">session en cours</span>' : et.appel ? '<span class="pastille att">appel…</span>' : '<span class="pastille">au repos</span>'}` : `<span class="erreur">${esc(et.erreur || 'Pat injoignable')}</span>`}</p>
+      <p id="wl-badge">${et.joignable ? `Pat joignable${et.indicatif ? ' · station <b class="mono">' + esc(et.indicatif) + '</b>' : ''} · ${et.connecte ? '<span class="pastille ok">session en cours</span>' : et.appel ? '<span class="pastille att">appel…</span>' : '<span class="pastille">au repos</span>'}` : `<span class="erreur">${esc(et.erreur || 'Pat injoignable')}</span>`}</p>
       ${lic ? '' : '<div class="bandeau">Lecture seule : rédiger et lancer une session est réservé aux radioamateurs licenciés (indicatif validé par un administrateur).</div>'}
       <div class="ligne-champs">${['in', 'out', 'sent', 'archive'].map((b) => `<button class="${boite === b ? 'principal' : ''}" data-boite="${b}">${{ in: '📥 Reçus', out: '📤 À envoyer', sent: '✔ Envoyés', archive: '🗄 Archives' }[b]}</button>`).join('')}</div>
       <div id="wl-liste"><div class="vide">Chargement…</div></div>
@@ -579,6 +588,25 @@
         try { const m = await api(`/api/adrasec/winlink/boite/${boite}/${encodeURIComponent(d.dataset.mid)}`); c.textContent = `De : ${m.de}\nÀ : ${m.a.join(', ')}${m.cc.length ? '\nCc : ' + m.cc.join(', ') : ''}\n\n${m.corps || ''}`; d.classList.remove('non-lu'); } catch (e) { c.textContent = e.message; }
       };
     } catch (e) { z.innerHTML = `<p class="erreur">${esc(e.message)}</p>`; }
+  }
+
+  // Flux Winlink en direct (statut de Pat, nouveau courrier) : un seul WebSocket pour la page, ouvert si la
+  // station est installée. Le serveur ne lui envoie des évènements que si ce compte a accès à la station
+  // (adrasec.js ne demande donc rien de plus : le filtrage par groupe est fait côté serveur, voir server.js).
+  let wsWinlink = null, wsWinlinkEssai = 2000;
+  function connecterWsWinlink() {
+    if (wsWinlink || !E || !E.winlink || !E.winlink.configure) return;
+    const w = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    wsWinlink = w;
+    w.onopen = () => { wsWinlinkEssai = 2000; };
+    w.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.genre !== 'winlink') return;
+      if (m.etat) majBadgeWinlink(m.etat);
+      // Nouveau courrier probable : si l'onglet Winlink est ouvert, on relit juste la boîte déjà affichée
+      if (m.type === 'message' && ongletActif === 'winlink' && $('#wl-liste')) listerBoite();
+    };
+    w.onclose = () => { wsWinlink = null; setTimeout(connecterWsWinlink, wsWinlinkEssai); wsWinlinkEssai = Math.min(60000, Math.round(wsWinlinkEssai * 1.7)); };
   }
 
   // ---- Gestion : responsable du groupe radioamateur et administrateurs de la carte ---------------------------
@@ -842,6 +870,7 @@
   await charger();
   montrer(ongletActif);
   cadrerGonio();
+  connecterWsWinlink();
   // Rafraîchissement : toutes les 15 s, sans perdre la saisie en cours
   setInterval(() => { const a = document.activeElement; if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return; if (document.querySelector('.choix-mission, .choix-membres, #g-form-nouvelle:not([hidden]), #ge-ajout-liste input:checked, .fiche-membre.nouvelle, .edition-canaux[open], #rp-form')) return; charger(); }, 15000);
   setInterval(() => { if (trajets.size && !document.hidden) majTrajets(); }, 60000);

@@ -3296,6 +3296,7 @@ function brancherCompanionFlux(flux, nom, source, role, compte = null) {
 wss.on('connection', (ws, req) => {
   ws.admin = estMembre(req);
   ws.gestion = estGestion(req); // alertes des secteurs et journal de crise : gestionnaires et administrateurs seulement
+  ws.winlink = compteAutoriseWinlink(utilisateur(req)); // statut de la station Winlink : membres du groupe propriétaire
   ws.vivant = true;
   ws.on('pong', () => (ws.vivant = true));
   ws.send(JSON.stringify({ genre: 'bienvenue', admin: ws.admin, mqtt: !!(clientMqtt && clientMqtt.connected) }));
@@ -3359,6 +3360,14 @@ function diffuserMembres(message) {
   const t = JSON.stringify(message);
   const gestion = message.genre === 'secteur-alerte' || message.genre === 'urgence-evt';
   for (const ws of wss.clients) if (ws.readyState === 1 && ws.admin && (!gestion || ws.gestion)) ws.send(t);
+}
+// Statut Winlink (session de Pat en cours, nouveau courrier) : réservé aux comptes qui ont accès à cette station
+// (groupe radioamateur propriétaire de PAT_GROUPE_RADIO, ou administrateurs de la carte) — jamais au public, ni aux
+// membres d'un autre groupe radioamateur de la carte. Le contenu des messages (sujet, corps) n'y circule jamais :
+// seul un indicateur d'état sert la carte, le navigateur relit la boîte par la route REST déjà contrôlée par les droits.
+function diffuserWinlink(message) {
+  const t = JSON.stringify(message);
+  for (const ws of wss.clients) if (ws.readyState === 1 && ws.winlink) ws.send(t);
 }
 // Secteurs d'alerte et mode urgence : positions reçues (un paquet vu par plusieurs passerelles compte une fois)
 // et messages de détresse pendant une crise
@@ -4268,6 +4277,9 @@ const adrasec = require('./adrasec').creerAdrasec({ config, journal, diffuser, r
   surEquipeSupprimee: (cle) => { if (secteursAlerte.equipeSupprimee(cle)) planifierRafraichir(); },
   nomDe: (n) => { const r = reqNomSig.get(n >>> 0); return r && (r.nom_long || r.nom_court); }, positionDe: (num) => { try { const r = reqPosEquipe.get(num >>> 0); return r && r.lat != null ? { lat: r.lat, lon: r.lon, heure: r.heure_position || 0 } : null; } catch { return null; } } });
 const winlink = require('./winlink').creerWinlink({ journal });
+// Statut de connexion et nouveau courrier, poussés par Pat en temps réel : relayés aux navigateurs autorisés sans
+// qu'ils aient à rouvrir l'onglet Winlink (voir winlink.js, et public/adrasec.js côté client)
+winlink.surEvenement((evt) => diffuserWinlink(evt));
 // Groupe radioamateur du compte (un membre de plusieurs groupes, ou un administrateur de la carte, choisit celui qu'il
 // consulte : ?g=RC1) ; membre, responsable ou administrateur de la carte, qui règle le groupe même désactivé
 const routeAdrasec = (f, { admin = false, licencie = false } = {}) => async (req, res) => {
@@ -4366,6 +4378,9 @@ app.get('/api/terrain/:jeton', (req, res) => {
 // rédaction et sessions : radioamateurs licenciés de ce groupe
 const adrasecWinlink = () => String(process.env.PAT_GROUPE_RADIO || '').trim().toUpperCase();
 const winlinkAutorise = (u, G) => u.role === 'admin' || G.g.code === adrasecWinlink();
+// Même contrôle, mais sans « vue » de groupe déjà choisie (?g=) : utilisé pour filtrer la diffusion WebSocket en
+// direct, dès la connexion du navigateur (voir wss.on('connection', ...) et diffuserWinlink ci-dessous)
+const compteAutoriseWinlink = (u) => !!u && (u.role === 'admin' || (!!adrasecWinlink() && adrasec.groupesDe(u).includes(adrasecWinlink())));
 const gardeWinlink = (f) => (req, b, u, G) => { if (!winlinkAutorise(u, G)) throw new Error(`La station Winlink de cette carte est réservée à ${adrasec.nomGroupe(adrasecWinlink())}`); return f(req, b, u, G); };
 app.get('/api/adrasec/winlink/etat', routeAdrasec(gardeWinlink(() => winlink.etat())));
 app.get('/api/adrasec/winlink/boite/:nom', routeAdrasec(gardeWinlink((req) => winlink.boite(req.params.nom))));
@@ -5122,6 +5137,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     journal('Arrêt…');
     try { secteursAlerte.arreter(); urgence.arreter(); } catch { /* rien à enregistrer */ }
+    try { winlink.arreter(); } catch { /* rien à enregistrer */ }
     publicateurMc.fermer();
     clientMqtt.end(true);
     stockage.db.close();

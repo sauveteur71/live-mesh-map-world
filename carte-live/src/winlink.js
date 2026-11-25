@@ -6,7 +6,12 @@
 // pour les seuls membres licenciés (le trafic radioamateur est fait par un opérateur licencié, en son nom).
 // VARA (EA5HVK, logiciel propriétaire pour Windows) n'est pas fourni : il tourne sur le PC radio et Pat s'y relie par
 // ses ports TCP (réglage « varahf » / « varafm » de Pat), de même pour ARDOP ou un TNC packet.
+// En plus du dialogue HTTP ci-dessus, le module se relie aussi en client au WebSocket /ws de Pat (celui que sert son
+// interface web) pour suivre en direct la connexion en cours et l'arrivée de courrier, et relayer un évènement
+// compact à server.js (voir surEvenement) sans attendre qu'un navigateur rouvre l'onglet Winlink. Pat peut très bien
+// ne pas être lancé (fonction facultative) : la reconnexion se fait alors en silence, avec un repli croissant.
 
+const WebSocket = require('ws');
 const Gonio = require('../public/gonio.js');
 
 function creerWinlink({ url = process.env.PAT_URL || '', journal = () => {} } = {}) {
@@ -90,7 +95,59 @@ function creerWinlink({ url = process.env.PAT_URL || '', journal = () => {} } = 
     return res;
   }
 
-  return { actif, etat, boite, message, envoyer, session, passerelles };
+  // ---- Flux temps réel (WebSocket /ws de Pat) ---------------------------------------------------------------
+  // Pat pousse ses évènements (connexion en cours, session ouverte/fermée, nouveau courrier) sur le même WebSocket
+  // que son interface web. Son contenu exact n'étant pas documenté comme une API stable, on ne s'y fie pas : chaque
+  // message reçu déclenche seulement un nouvel appel à etat() (source sûre, déjà utilisée par la route REST), et on
+  // devine juste s'il s'agit plutôt d'une arrivée de courrier (pour que le client rafraîchisse la boîte affichée)
+  // à partir de quelques mots-clés attendus.
+  const abonnes = [];
+  function surEvenement(cb) { abonnes.push(cb); }
+  function emettre(evt) { for (const cb of abonnes) { try { cb(evt); } catch (e) { journal('[Winlink] abonné en erreur :', e.message); } } }
+  let wsPat = null, delaiRepli = 2000, minuterieRepli = null, minuterieDebounce = null, arretDemande = false, dejaSignaleHorsLigne = false;
+  const REPLI_MAX = 60000;
+  const urlWsPat = () => base.replace(/^http/i, 'ws') + '/ws';
+  function programmerReconnexion() {
+    if (arretDemande || !base) return;
+    clearTimeout(minuterieRepli);
+    minuterieRepli = setTimeout(connecterFluxPat, delaiRepli);
+    delaiRepli = Math.min(REPLI_MAX, Math.round(delaiRepli * 1.7));
+  }
+  function signalerChangement(brut) {
+    clearTimeout(minuterieDebounce);
+    // Un sursaut de messages rapprochés (plusieurs évènements pour une même session) ne redemande l'état qu'une fois
+    minuterieDebounce = setTimeout(async () => {
+      let e;
+      try { e = await etat(); } catch (err) { journal('[Winlink] état indisponible après un évènement de Pat :', err.message); return; }
+      const messageProbable = /mail|message|unread|inbox/i.test(String(brut || ''));
+      emettre({ genre: 'winlink', type: messageProbable ? 'message' : 'etat', etat: e });
+    }, 400);
+  }
+  function connecterFluxPat() {
+    if (!base || arretDemande || wsPat) return;
+    let w;
+    try { w = new WebSocket(urlWsPat(), { handshakeTimeout: 10000 }); } catch { programmerReconnexion(); return; }
+    wsPat = w;
+    w.on('open', () => { delaiRepli = 2000; if (dejaSignaleHorsLigne) { journal('[Winlink] flux temps réel de Pat rétabli'); dejaSignaleHorsLigne = false; } });
+    w.on('message', (d) => signalerChangement(d));
+    w.on('error', () => { /* le « close » qui suit journalise et programme la reconnexion */ });
+    w.on('close', () => {
+      wsPat = null;
+      if (arretDemande) return; // arrêt propre de la carte : pas un incident, rien à journaliser ni à reconnecter
+      if (!dejaSignaleHorsLigne) { journal('[Winlink] flux temps réel de Pat injoignable (nouvel essai en arrière-plan) : le service « pat » est-il lancé ?'); dejaSignaleHorsLigne = true; }
+      programmerReconnexion();
+    });
+  }
+  if (actif()) connecterFluxPat();
+  // Arrêt propre (redémarrage de la carte) : ne pas rouvrir de connexion après
+  function arreter() {
+    arretDemande = true;
+    clearTimeout(minuterieRepli);
+    clearTimeout(minuterieDebounce);
+    if (wsPat) { try { wsPat.close(); } catch { /* déjà fermé */ } wsPat = null; }
+  }
+
+  return { actif, etat, boite, message, envoyer, session, passerelles, surEvenement, arreter };
 }
 
 module.exports = { creerWinlink };
