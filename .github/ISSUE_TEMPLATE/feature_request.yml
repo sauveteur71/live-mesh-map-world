@@ -1,0 +1,21 @@
+name: 💡 Feature request
+description: An idea for an improvement or a new feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What need or problem would this solve?
+      description: Describe the concrete situation that led to this request.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you imagine it working like, if you have an idea.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Did you work around it another way, or see something similar elsewhere (Meshtastic, MeshCore, etc.)?

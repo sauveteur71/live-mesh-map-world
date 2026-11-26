@@ -1,0 +1,35 @@
+name: 🐛 Bug report
+description: Something isn't working as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Program version (e.g. v1.12.0) and country/area of the deployment
+      placeholder: "v1.12.0 — deployed in..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, and what happened instead of what you expected?
+      placeholder: |
+        1. ...
+        2. ...
+        Actual result: ...
+        Expected result: ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Output of `docker compose logs -f` (please strip any identifier or personal data)
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Browser, radio hardware, network size, etc.
