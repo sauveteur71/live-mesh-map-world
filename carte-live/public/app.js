@@ -6951,10 +6951,21 @@ async function optionsDepartements(select, code) {
   const liste = await api('/api/departements').catch(() => []);
   const monde = RE_MONDE.test(code || '');
   const regionsPays = RE_REGIONS_PAYS.test(code || '');
-  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}${regionsPays ? `<option value="${esc(code)}" selected>${esc(nomRegionsClient(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option></optgroup>`
-    + `<optgroup label="France (relief IGN)">${liste.map((d) => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${d.code} · ${esc(d.nom)}</option>`).join('')}</optgroup>`;
+  // Édition monde : la zone actuelle n'est presque jamais un département français, donc le groupe « France »
+  // (96 options) est replié par défaut derrière une option à cliquer, pour ne pas noyer le choix hors de France.
+  // Il reste affiché d'emblée si la zone déjà réglée en est justement un (pour ne pas la cacher sans raison).
+  const estDepartementFr = liste.some((d) => d.code === code);
+  const optgroupFrance = `<optgroup label="France (relief IGN)">${liste.map((d) => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${d.code} · ${esc(d.nom)}</option>`).join('')}</optgroup>`;
+  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}${regionsPays ? `<option value="${esc(code)}" selected>${esc(nomRegionsClient(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option>${estDepartementFr ? '' : '<option value="afficher-france">🇫🇷 Afficher aussi les départements français…</option>'}</optgroup>`
+    + (estDepartementFr ? optgroupFrance : '');
   let avant = select.value;
   select.addEventListener('change', async () => {
+    if (select.value === 'afficher-france') {
+      select.querySelector('option[value="afficher-france"]')?.remove();
+      select.insertAdjacentHTML('beforeend', optgroupFrance);
+      select.value = avant;
+      return;
+    }
     if (select.value !== 'choisir-monde') { avant = select.value; return; }
     let pos = await choisirPositionMonde();
     if (pos === 'precis') pos = await choisirPositionMondePrecise();
