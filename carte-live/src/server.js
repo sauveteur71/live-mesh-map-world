@@ -75,7 +75,8 @@ const { creerAnalyse } = require('./analyse');
 const { creerRelief, contourDepartement, nomDepartement } = require('./relief');
 const { creerReliefGrossier } = require('./relief-grossier');
 const { creerCacheRelief } = require('./relief-cache');
-const { estCodeMonde, codeMonde, nomMonde, lieuxMonde, voisinsMonde } = require('./monde');
+const { estCodeMonde, codeMonde, nomMonde, lieuxMonde, lieuxZone, voisinsMonde } = require('./monde');
+const { estCodeEtatsUS, codesEtatsUS, construireCode, nomEtatsUS, listeEtatsUS, sontContigus, rectangleEtatsUS, surfaceApproxKm2, LIMITE_SURFACE_KM2, MAX_ETATS } = require('./etatsUS');
 const { creerComptes } = require('./comptes');
 const { creerAdministration } = require('./administration');
 const { creerAgents } = require('./agents');
@@ -539,7 +540,9 @@ async function importerPaquetFrance() {
   } finally { try { fs.unlinkSync(tmp); } catch { /* déjà */ } }
 }
 // Carte hors de France : pas de « France entière », mais la zone de la carte et ses 8 carrés voisins (relief Copernicus)
-const carteMonde = () => estCodeMonde(config.departement.code);
+// Zone « sur mesure » (États américains) : même chose, sans carrés voisins (pas de notion de voisinage pour une
+// union d'États — codesAPreparer() ne renvoie alors que la zone elle-même, voisinsMonde() ne la reconnaissant pas)
+const carteMonde = () => estCodeMonde(config.departement.code) || estCodeEtatsUS(config.departement.code);
 const codesAPreparer = () => (carteMonde() ? voisinsMonde(String(config.departement.code).toUpperCase()) : listeDepartements.map((d) => d.code));
 async function prechargerFrance() {
   if (precharge.enCours) return;
@@ -892,6 +895,7 @@ async function villesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `villes-${code}.json`);
   try { return lireJson(f); } catch { /* à télécharger */ }
   if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
+  if (estCodeEtatsUS(code)) { const l = await lieuxZone(rectangleEtatsUS(code)); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).sort((a, b) => b.population - a.population).slice(0, 20)
@@ -944,6 +948,7 @@ async function communesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `communes-${code}.json`);
   try { return lireJson(f); } catch { /* à télécharger */ }
   if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l; ecrireSur(f, JSON.stringify(res)); return res; }
+  if (estCodeEtatsUS(code)) { const l = await lieuxZone(rectangleEtatsUS(code)); ecrireSur(f, JSON.stringify(l)); return l; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).map((c) => ({ nom: c.nom, lat: c.centre.coordinates[1], lon: c.centre.coordinates[0], population: c.population }));
@@ -2437,8 +2442,15 @@ function preparerReglages(b, existants = {}) {
   const r = { ...existants };
   const txt = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined);
   if (txt(b.titre)) r.titre = txt(b.titre, 80);
+  // Zone « sur mesure » (un ou plusieurs États américains) : soit un code tout fait (US-CA+NV),
+  // soit une liste d'États choisis dans l'interface (b.etatsUS = ['CA','NV','OR']), plus pratique à cocher
+  if (Array.isArray(b.etatsUS) && b.etatsUS.length) b.departement = construireCode(b.etatsUS) || b.departement;
   if (b.departement) {
-    const d = estCodeMonde(b.departement) ? { code: String(b.departement).toUpperCase(), nom: nomMonde(String(b.departement).toUpperCase()) } : listeDepartements.find((x) => x.code === String(b.departement));
+    const code = String(b.departement).toUpperCase();
+    let d;
+    if (estCodeMonde(code)) d = { code, nom: nomMonde(code) };
+    else if (estCodeEtatsUS(code)) d = { code, nom: nomEtatsUS(code) };
+    else d = listeDepartements.find((x) => x.code === code);
     if (!d) throw new Error('Département inconnu');
     const geom = contourDepartement(d.code);
     if (!geom) throw new Error('Contour du département introuvable');
@@ -2448,7 +2460,16 @@ function preparerReglages(b, existants = {}) {
     r.zoneNom = d.nom;
     r.centre = [+((z[0] + z[2]) / 2).toFixed(4), +((z[1] + z[3]) / 2).toFixed(4)];
     r.zoom = 9;
-    if (!txt(b.titre) && !existants.titre) r.titre = estCodeMonde(d.code) ? 'Live mesh map' : `Réseau Meshtastic · ${d.nom}`;
+    if (!txt(b.titre) && !existants.titre) r.titre = (estCodeMonde(d.code) || estCodeEtatsUS(d.code)) ? 'Live mesh map' : `Réseau Meshtastic · ${d.nom}`;
+    delete r.avertissementZone;
+    if (estCodeEtatsUS(d.code)) {
+      const codes = codesEtatsUS(d.code);
+      // Surface approximative à la résolution du relief (250 m) : au-delà, le calcul du relief refusera la
+      // zone (voir le garde-fou mémoire de creerRelief) — autant le dire ici, avant d'enregistrer et de redémarrer
+      const aireKm2 = surfaceApproxKm2(d.code);
+      if (aireKm2 > LIMITE_SURFACE_KM2) throw new Error(`Zone trop grande pour le relief (≈ ${Math.round(aireKm2).toLocaleString('fr')} km², limite ≈ ${Math.round(LIMITE_SURFACE_KM2).toLocaleString('fr')} km²) : choisissez moins d'États, ou de plus petits`);
+      if (!sontContigus(codes)) r.avertissementZone = `Attention : ${d.nom} ne semble pas former un seul bloc continu (États non limitrophes ou se touchant juste par un coin)`;
+    }
   }
   if (b.mqtt) {
     const m = { ...(existants.mqtt || {}) };
@@ -2586,7 +2607,7 @@ app.post('/api/installation', (req, res) => {
   try { fs.unlinkSync(path.join(path.dirname(config.fichierBase), 'code-installation.txt')); } catch { /* aucun */ }
   codeInstallationAuto = null;
   const redemarrage = !!(r && Object.keys(b.reglages || {}).length);
-  res.json({ ok: true, redemarrage });
+  res.json({ ok: true, redemarrage, avertissement: (r || {}).avertissementZone });
   if (redemarrage) enregistrerReglagesEtRedemarrer(r, c.identifiant);
 });
 
@@ -2617,9 +2638,11 @@ app.post('/api/reglages', (req, res) => {
   }
   let r;
   try { r = preparerReglages(req.body || {}, config.reglages); } catch (e) { return res.status(400).json({ erreur: e.message }); }
-  res.json({ ok: true, redemarrage: true });
+  res.json({ ok: true, redemarrage: true, avertissement: r.avertissementZone });
   enregistrerReglagesEtRedemarrer(r, u.identifiant);
 });
+// Liste des États américains proposés pour une zone « sur mesure » (sélecteur pays/État)
+app.get('/api/etats-us', (req, res) => res.json({ etats: listeEtatsUS(), max: MAX_ETATS }));
 
 // ---- Broker MQTT : état, statistiques et test d'une configuration (admin) --------------------
 const masquerUrl = (u) => String(u || '').replace(/\/\/[^@/]*@/, '//***@');

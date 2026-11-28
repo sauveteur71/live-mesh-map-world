@@ -164,10 +164,10 @@ async function grilleCopernicus({ sud, ouest, pasLat, pasLon, nLat, nLon }, prog
   return z;
 }
 
-// Villes et villages d'un carré mondial (OpenStreetMap : place=city|town|village avec population)
+// Villes et villages d'un carré mondial, ou de toute autre zone hors de France dont on a le rectangle englobant
+// (OpenStreetMap : place=city|town|village avec population)
 const SERVEURS_OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
-async function lieuxMonde(code) {
-  const r = rectangleMonde(code);
+async function lieuxZone(r) {
   if (!r) return [];
   const q = `[out:json][timeout:90];node["place"~"^(city|town|village)$"]["population"](${r.join(',')});out body;`;
   let derniere = null;
@@ -182,6 +182,8 @@ async function lieuxMonde(code) {
   }
   throw new Error('OpenStreetMap (Overpass) : ' + (derniere ? derniere.message : 'indisponible'));
 }
+// Compatibilité : carré mondial par son code (MN50E004…)
+const lieuxMonde = (code) => lieuxZone(rectangleMonde(code));
 
 // Le carré et ses 8 voisins (3 × 3 carrés de 1°) : de quoi couvrir la zone de la carte et ses alentours
 function voisinsMonde(code) {
@@ -195,4 +197,4 @@ function voisinsMonde(code) {
   }
   return l;
 }
-module.exports = { voisinsMonde, lieuxMonde, MARGE_MONDE, estCodeMonde, codeMonde, rectangleMonde, contourMonde, nomMonde, grilleCopernicus };
+module.exports = { voisinsMonde, lieuxMonde, lieuxZone, MARGE_MONDE, estCodeMonde, codeMonde, rectangleMonde, contourMonde, nomMonde, grilleCopernicus };

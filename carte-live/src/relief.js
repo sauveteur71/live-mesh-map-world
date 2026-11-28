@@ -24,6 +24,12 @@ const PARAMS_LORA = {
   MESHCORE_FR: { sf: 8, bw: 62.5 },
 };
 const SNR_LIMITE = { 5: -2.5, 6: -5, 7: -7.5, 8: -10, 9: -12.5, 10: -15, 11: -17.5, 12: -20 };
+function nombreEnv(nom, defaut) {
+  const v = process.env[nom];
+  if (v === undefined || v === '') return defaut;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : defaut;
+}
 
 // Perte de diffraction lame de couteau (ITU-R P.526)
 const diffraction = (v) => (v > -0.78 ? 6.9 + 20 * Math.log10(Math.sqrt((v - 0.1) ** 2 + 1) + v - 0.1) : 0);
@@ -77,6 +83,7 @@ async function pngAsync(largeur, hauteur, rgba) {
 // Contour d'un département : fichier détaillé s'il existe (Haute-Loire), sinon contour simplifié national
 function contourDepartement(code) {
   if (estCodeMonde(code)) return contourMonde(code);
+  if (estCodeEtatsUS(code)) return contourEtatsUS(code);
   const ref = path.join(__dirname, '..', 'donnees-ref');
   try {
     const g = lireJson(path.join(ref, `departement-${code}.geojson`));
@@ -91,6 +98,7 @@ function contourDepartement(code) {
 
 const { creerAcces, NIVEAUX: NIVEAUX_ACCES } = require('./acces');
 const { MARGE_MONDE, estCodeMonde, contourMonde, nomMonde, grilleCopernicus } = require('./monde');
+const { estCodeEtatsUS, contourEtatsUS, nomEtatsUS } = require('./etatsUS');
 const { creerRealisme } = require('./realisme');
 
 // Rectangle englobant [sud, ouest, nord, est] d'un département (contour national)
@@ -104,6 +112,7 @@ function rectangleDepartement(code) {
 }
 function nomDepartement(code) {
   if (estCodeMonde(code)) return nomMonde(code);
+  if (estCodeEtatsUS(code)) return nomEtatsUS(code);
   try {
     const g = lireJson(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson'));
     const f = g.features.find((x) => x.properties.code === code);
@@ -130,7 +139,7 @@ function creerRelief(config, journal, fournisseurs, options = {}) {
   let arrete = false; // instance arrêtée (département retiré de la mémoire) : les téléchargements en cours s'interrompent
   const niveauMin = (filtre) => NIVEAUX_ACCES[filtre] || 0; // tous = 0
   const accessible = (s, min) => !min || (s.acces && s.acces.niveau >= min);
-  const monde = estCodeMonde(codeDep); // zone hors de France : relief Copernicus
+  const monde = estCodeMonde(codeDep) || estCodeEtatsUS(codeDep); // zone hors de France : relief Copernicus
   const marge = monde ? MARGE_MONDE : 0.2; // degrés autour de la zone
   const z0 = options.code ? rectangleDepartement(codeDep) : config.zone; // [sud, ouest, nord, est]
   if (!z0) throw new Error(`Département ${codeDep} inconnu`);
@@ -141,6 +150,16 @@ function creerRelief(config, journal, fournisseurs, options = {}) {
   const nLat = Math.round((emprise.nord - emprise.sud) / pasLat) + 1;
   const nLon = Math.round((emprise.est - emprise.ouest) / pasLon) + 1;
   const aireCelleKm2 = 0.0625;
+  // Garde-fou mémoire : la grille (250 m de pas) grandit avec la surface de la zone. Un très grand département
+  // sur mesure (plusieurs grands États américains réunis) peut demander plusieurs centaines de Mo rien que pour
+  // les tableaux de relief — trop pour un Raspberry Pi ou le conteneur Docker (limité à 512 Mo par défaut).
+  // RELIEF_CELLULES_MAX=0 désactive la limite (pour qui a la RAM et veut une très grande zone).
+  // Même plafond que LIMITE_SURFACE_KM2 dans etatsUS.js (qui avertit déjà dans la page Réglages, avant
+  // d'enregistrer et de redémarrer) : à changer ensemble si l'un des deux évolue.
+  const CELLULES_MAX = nombreEnv('RELIEF_CELLULES_MAX', 32_000_000);
+  if (CELLULES_MAX > 0 && nLat * nLon > CELLULES_MAX) {
+    throw new Error(`Zone trop grande pour le relief (${Math.round(nLat * nLon * aireCelleKm2).toLocaleString('fr')} km² à 250 m de résolution) : choisissez moins d'États, ou réglez RELIEF_CELLULES_MAX si la machine a assez de mémoire`);
+  }
 
   const realisme = creerRealisme(dossier, journal, suffixe, emprise);
   const pause = () => new Promise((r) => setImmediate(r));
