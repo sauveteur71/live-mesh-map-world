@@ -2,6 +2,21 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.13.0
+
+### 🌍 Pick a country (and a US state) instead of typing coordinates
+- Setting up the map outside France ("Settings → Department → 🌍 Outside France: choose the position…") used to open a plain text prompt asking for latitude/longitude in decimal degrees — not friendly for a non-technical installer. It's now a small guided dialog: pick the **country** from a list of about 250, and, for the **United States**, a second list with the **50 states + DC**. The map works out the relief tile from that choice itself, exactly as before (same 1°×1° tile codes, same Copernicus relief).
+- Reference positions are a capital or a large city per country/state — approximate, but close enough to start from; the exact position can still be refined later.
+- A "**Enter precise coordinates…**" link keeps the old free-text prompt available for advanced users who want to type an exact latitude/longitude.
+- Canada and Australia still use a single reference point per country for now (no province/state breakdown yet).
+- For a country with a state list, a "**— Do not specify (general position of the country) —**" entry is available too, for someone who doesn't yet know their exact state: it uses the country's own reference position (the same one used when it has no state list at all). This still covers only a single 1°×1° tile, never the whole country — refine it later from Settings once the state is known.
+
+### 🔧 Clearer logs when the area is set by hand
+- If `reglages.json` already exists (the area has already been set once, from the wizard or the Settings page), the server now says clearly, once, at startup, that `ZONE_BBOX`/`DEPARTEMENT`/`ZONE_NOM` in the `.env` are ignored from then on — instead of silently keeping the old value with nothing in the log to explain why.
+- If the area code ends up neither a known French department nor a valid worldwide tile (`MN50E004`-style — most often from editing `reglages.json` by hand, bypassing the Settings page's checks), the server now logs a clear error at startup instead of silently loading the wrong terrain, or none at all.
+- A serial module that stays unplugged (or isn't passed through to the Docker container) no longer floods the log with the same "`/dev/ttyACM0` not found" line every 30 seconds: it's logged in full once, then only as an occasional reminder, until the module connects.
+- `wiki/Installation.md` (and its English translation) now says explicitly that `ZONE_BBOX`/`DEPARTEMENT`/`ZONE_NOM` only matter before the area is first set in the interface.
+
 ## 1.12.0
 
 ### 🔷 Shapes, not just colors, for Meshtastic nodes

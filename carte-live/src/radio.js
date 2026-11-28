@@ -35,6 +35,16 @@ function creerSourceRadio(stockage, config, canauxGlobaux, rappels, agents = nul
   const cfg = config.radio;
   const ecoute = options.ecoute || null;
   const journal = ecoute ? (...a) => console.log(new Date().toISOString(), `[Écoute ${ecoute.nom || ecoute.hote}]`, ...a) : journalPrincipal;
+  // Le même échec de connexion (port série débranché, hôte Wi-Fi injoignable…) revient sans fin tant que personne
+  // ne débranche le module de la carte : le dire à chaque tentative (toutes les 30 s ou 60 s) noie le journal pour
+  // rien. On le dit en entier la première fois, puis un simple rappel de loin en loin tant que rien ne change.
+  let dernierEchec = null, repetitionsEchec = 0;
+  function journalEchec(msg) {
+    if (msg === dernierEchec) {
+      repetitionsEchec++;
+      if (repetitionsEchec % 20 === 0) journal(`${msg} (toujours, après ${repetitionsEchec} essais)`);
+    } else { dernierEchec = msg; repetitionsEchec = 0; journal(msg); }
+  }
   const intervalles = [];
   // Modules Wi-Fi connus (choisis depuis la carte) et module actif, conservés dans le volume de données
   const fModules = path.join(path.dirname(config.fichierBase), 'modules-radio.json');
@@ -112,7 +122,7 @@ function creerSourceRadio(stockage, config, canauxGlobaux, rappels, agents = nul
       // Module branché en USB sur la machine de la carte
       try { socket = require('./serie').ouvrirSerie(cible.hote); } catch (e) {
         etat = { ...etat, connecte: false, erreur: e.message, reprise: Date.now() + 30000 };
-        enConfiguration = false; journal(e.message); planifier(30000);
+        enConfiguration = false; journalEchec(e.message); planifier(30000);
         if (apresSynchro) setImmediate(apresSynchro);
         return;
       }
@@ -127,6 +137,7 @@ function creerSourceRadio(stockage, config, canauxGlobaux, rappels, agents = nul
     ceSocket.setTimeout(10 * 60000); // aucun octet pendant 10 min : on considère la liaison morte
     const surConnexion = () => {
       etat = { ...etat, connecte: true, depuis: Date.now(), erreur: null, evince: false, reprise: null };
+      dernierEchec = null; repetitionsEchec = 0; // une connexion réussie : un prochain échec redevient intéressant à dire
       journal('connecté, demande de la configuration');
       // Réveil du module (octets de synchronisation) puis demande de configuration
       ceSocket.write(Buffer.alloc(32, 0xc3));
