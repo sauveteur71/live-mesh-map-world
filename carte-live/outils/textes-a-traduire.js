@@ -2,7 +2,7 @@
 // Extrait les fragments de texte français des sources (littéraux JS et HTML), ${…} remplacés par {}
 const fs = require('fs');
 const P = require('path').join(__dirname, '..', 'public') + '/';
-const fichiers = ['index.html', 'app.js', 'administration.js', 'ergonomie.js', 'crise.js', 'meshcore.js', 'publique.js', 'publique.html', 'topologie.js', 'topologie.html', 'sim-maillage.js', 'animations.js', 'rejoindre.js', 'rejoindre.html', 'relief3d.js', 'relief3d.html', 'secours.js', 'secours.html', 'adrasec.js', 'adrasec.html'];
+const fichiers = ['index.html', 'app.js', 'administration.js', 'ergonomie.js', 'crise.js', 'meshcore.js', 'publique.js', 'publique.html', 'topologie.js', 'topologie.html', 'sim-maillage.js', 'animations.js', 'rejoindre.js', 'rejoindre.html', 'relief3d.js', 'relief3d.html', 'secours.js', 'secours.html', 'adrasec.js', 'adrasec.html', 'donnees-pays.js'];
 const frag = new Map();
 function ajouter(t, f) {
   // découpe sur les balises HTML

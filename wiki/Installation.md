@@ -56,6 +56,7 @@ Tout le reste se règle ensuite depuis la carte (assistant, puis *Gestion › R�
 > - Une valeur **changée** dans l'assistant ou dans *Gestion › Réglages* (broker, canaux, titre…) **remplace** celle du `.env`. La page l'indique (« ces valeurs remplacent celles du .env ») et propose **Revenir au .env**.
 > - Une valeur laissée telle quelle reste lue dans le `.env` : vous pouvez la modifier plus tard dans le `.env`.
 > - Après une modification du `.env`, lancez **`docker compose up -d`** : un simple `docker compose restart` ne relit **pas** le `.env`.
+> - **Cas de la zone** (`ZONE_BBOX`, `DEPARTEMENT`, `ZONE_NOM`) : ces trois variables ne servent qu'avant le tout premier réglage de la zone dans l'interface. Dès que vous avez choisi le département ou la position (assistant, ou *Gestion › Réglages › Département*), la zone est enregistrée dans `reglages.json` et un changement ultérieur de ces variables dans le `.env` **n'a plus aucun effet**, même après redémarrage. Pour changer la zone ensuite, utilisez *Gestion › Réglages › Département* — jamais le `.env`.
 
 Affichage par défaut (facultatif) :
 

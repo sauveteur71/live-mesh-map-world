@@ -286,6 +286,24 @@ try {
     } catch { console.error(new Date().toISOString(), '[Réglages] aucune copie utilisable : valeurs du fichier .env'); }
   }
 }
+// Une fois reglages.json créé (premier démarrage passé), il prime sur le .env pour la zone : des variables du
+// .env changées ensuite n'ont donc plus aucun effet, ce qui n'est pas évident en regardant seulement les
+// journaux. Le dire clairement évite de chercher en vain « pourquoi ma zone ne change pas » dans le .env.
+if (fs.existsSync(config.fichierReglages) && (texte('ZONE_BBOX') || texte('DEPARTEMENT') || texte('ZONE_NOM'))) {
+  console.error(new Date().toISOString(), `[Réglages] ${config.fichierReglages} existe : les variables ZONE_BBOX/DEPARTEMENT/ZONE_NOM du .env sont ignorées. Pour changer la zone, utilisez la page Réglages de l’interface d’administration (un changement direct dans ${path.basename(config.fichierReglages)} demande ensuite un redémarrage).`);
+}
+// Zone invalide (ni département français connu, ni position monde MN50E004…) : le plus souvent reglages.json
+// modifié à la main, en contournant la validation de /api/reglages. Le relief se chargerait quand même (sur le
+// mauvais département, ou pas du tout) sans rien dire : on le signale clairement au démarrage, sans bloquer.
+{
+  const { estCodeMonde } = require('./monde');
+  let departementsConnus = new Set();
+  try { departementsConnus = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson'), 'utf8')).features.map((f) => f.properties.code)); } catch { /* liste indisponible : on ne bloque pas pour autant */ }
+  const code = config.departement.code;
+  if (!estCodeMonde(code) && !departementsConnus.has(code) && !departementsConnus.has(String(code || '').toUpperCase())) {
+    console.error(new Date().toISOString(), `[Réglages] Code de zone « ${code} » invalide (ni département français, ni position monde du type MN50E004) : la zone sera incorrecte. Configurez-la depuis la page Réglages de l’interface d’administration.`);
+  }
+}
 config.lireCanaux = lireCanaux;
 
 module.exports = config;

@@ -58,6 +58,7 @@ Everything else is then set from the map (wizard, then *Manage › Settings*).
 > - A value **changed** in the wizard or in *Manage › Settings* (broker, channels, title…) **replaces** the `.env` one. The page says so (“these values replace those of the .env”) and offers **Back to .env**.
 > - A value left as-is is still read from the `.env`: you can change it later in the `.env`.
 > - After editing the `.env`, run **`docker compose up -d`**: a plain `docker compose restart` does **not** read the `.env` again.
+> - **The area** (`ZONE_BBOX`, `DEPARTEMENT`, `ZONE_NOM`): these three variables only matter before the area is set for the very first time in the interface. Once you have chosen the department or the position (wizard, or *Manage › Settings › Department*), the area is saved in `reglages.json` and changing these variables in the `.env` afterwards has **no effect at all** any more, even after a restart. To change the area later, use *Manage › Settings › Department* — never the `.env`.
 
 Default display (optional):
 

@@ -6847,6 +6847,90 @@ function nomMonde(code) {
   const d = (v, a, b) => `${Math.abs(v)}°${v >= 0 ? a : b}`;
   return `${d(s, 'N', 'S')}–${d(s + 1, 'N', 'S')} · ${d(o, 'E', 'W')}–${d(o + 1, 'E', 'W')}`;
 }
+// Saisie libre de la position (repli pour un réglage fin) : « 52.12, 4.43 », « 52.12 4.43 » ou, avec la virgule
+// décimale, « 52,12; 4,43 » / « 52,12 4,43 ». Saisie non reconnue : la question est reposée, au lieu de revenir
+// en arrière sans rien dire.
+async function choisirPositionMondePrecise() {
+  const c = typeof carte !== 'undefined' ? carte.getCenter() : { lat: 40, lng: -75 };
+  const lire = (v) => {
+    const s = String(v || '').trim();
+    const m = /^(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(s) || /^(-?\d{1,2}(?:,\d+)?)\s*[; ]\s*(-?\d{1,3}(?:,\d+)?)$/.exec(s);
+    if (!m) return null;
+    const lat = Number(m[1].replace(',', '.')), lon = Number(m[2].replace(',', '.'));
+    return Math.abs(lat) <= 85 && Math.abs(lon) <= 180 ? [lat, lon] : null;
+  };
+  let v = `${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`, pos = null;
+  for (let essai = 0; essai < 3 && !pos; essai++) {
+    v = typeof saisir === 'function'
+      ? await saisir('Position du centre de votre réseau (latitude, longitude en degrés décimaux, ex. 40.7, -74.0) :', v)
+      : prompt('Latitude, longitude du centre de votre réseau :', v);
+    if (!v) break; // annulé
+    pos = lire(v);
+  }
+  return pos;
+}
+// Données des pays et des États (window.PAYS_MONDE / window.ETATS_MONDE) : téléchargées une seule fois, seulement
+// quand un installateur choisit effectivement la zone « Hors de France » (pas au chargement normal de la carte).
+let chargementPaysMonde = null;
+function chargerDonneesPaysMonde() {
+  if (window.PAYS_MONDE) return Promise.resolve();
+  if (!chargementPaysMonde) {
+    chargementPaysMonde = new Promise((ok, ko) => {
+      const s = document.createElement('script');
+      const v = (/[?&]v=([\w.-]+)/.exec((document.querySelector('script[src*="/app.js"]') || {}).src || '') || [])[1];
+      s.src = '/donnees-pays.js' + (v ? '?v=' + v : '?t=' + Date.now());
+      s.onload = ok;
+      s.onerror = () => { chargementPaysMonde = null; ko(new Error('Liste des pays indisponible : vérifiez la connexion à la carte')); };
+      document.head.appendChild(s);
+    });
+  }
+  return chargementPaysMonde;
+}
+// Choix guidé pays (+ État pour les États-Unis) : renvoie [lat, lon], « precis » (repli demandé) ou null (annulé).
+async function choisirPositionMonde() {
+  try { await chargerDonneesPaysMonde(); } catch (e) { alert(e.message); return null; }
+  return new Promise((resoudre) => {
+    let d = document.getElementById('dlg-monde');
+    if (!d) { d = document.createElement('dialog'); d.id = 'dlg-monde'; document.body.appendChild(d); }
+    const pays = (window.PAYS_MONDE || []).slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    d.innerHTML = `<button class="fermer" type="button" data-fermer title="Fermer">×</button><h3>🌍 Position du réseau</h3>
+      <p class="note">Choisissez le pays où est installé le réseau (puis l’État pour les États-Unis). La carte calcule elle-même la zone de relief la plus proche ; la position pourra être affinée plus tard.</p>
+      <div class="parametres">
+        <label>Pays du réseau <select name="pays" style="width:230px"><option value="">— choisir —</option>${pays.map((p) => `<option value="${p.code}" data-lat="${p.lat}" data-lon="${p.lon}">${esc(p.nom)}</option>`).join('')}</select></label>
+        <label id="champ-etat-monde" hidden>État de ce pays <select name="etat" style="width:230px"></select></label>
+      </div>
+      <div class="actions-prop"><button type="button" class="principal" data-ok disabled>Confirmer la position</button><button type="button" data-precis>Saisir des coordonnées précises…</button></div>
+      <p class="erreur" data-retour></p>`;
+    const selPays = d.querySelector('[name=pays]'), champEtat = d.querySelector('#champ-etat-monde'), selEtat = d.querySelector('[name=etat]'), btnOk = d.querySelector('[data-ok]');
+    // Changer de pays refait la liste des États ; changer d'État ne fait que mettre à jour le bouton (sinon la
+    // liste est reconstruite sous le doigt et la sélection qui vient d'être faite se perd aussitôt).
+    const majBouton = () => {
+      const etats = (window.ETATS_MONDE || {})[selPays.value];
+      btnOk.disabled = !selPays.value || !!(etats && etats.length && !selEtat.value);
+    };
+    selPays.onchange = () => {
+      const etats = (window.ETATS_MONDE || {})[selPays.value];
+      if (etats && etats.length) {
+        champEtat.hidden = false;
+        selEtat.innerHTML = `<option value="">— choisir —</option>${etats.map((e) => `<option value="${e.code}" data-lat="${e.lat}" data-lon="${e.lon}">${esc(e.nom)}</option>`).join('')}`;
+      } else { champEtat.hidden = true; selEtat.innerHTML = ''; }
+      majBouton();
+    };
+    selEtat.onchange = majBouton;
+    let rendu = false;
+    const fin = (v) => { if (rendu) return; rendu = true; d.onclose = null; if (d.open) d.close(); resoudre(v); };
+    d.querySelector('[data-fermer]').onclick = () => fin(null);
+    d.querySelector('[data-precis]').onclick = () => fin('precis');
+    d.querySelector('[data-ok]').onclick = () => {
+      const etats = (window.ETATS_MONDE || {})[selPays.value];
+      const o = (etats && etats.length ? selEtat : selPays).selectedOptions[0];
+      if (!o || !o.value) return;
+      fin([Number(o.dataset.lat), Number(o.dataset.lon)]);
+    };
+    d.onclose = () => fin(null);
+    d.showModal();
+  });
+}
 async function optionsDepartements(select, code) {
   const liste = await api('/api/departements').catch(() => []);
   const monde = RE_MONDE.test(code || '');
@@ -6855,24 +6939,8 @@ async function optionsDepartements(select, code) {
   let avant = select.value;
   select.addEventListener('change', async () => {
     if (select.value !== 'choisir-monde') { avant = select.value; return; }
-    const c = typeof carte !== 'undefined' ? carte.getCenter() : { lat: 40, lng: -75 };
-    // « 52.12, 4.43 », « 52.12 4.43 » ou, avec la virgule décimale, « 52,12; 4,43 » / « 52,12 4,43 ».
-    // Saisie non reconnue : la question est reposée avec la saisie, au lieu de revenir en arrière sans rien dire.
-    const lire = (v) => {
-      const s = String(v || '').trim();
-      const m = /^(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(s) || /^(-?\d{1,2}(?:,\d+)?)\s*[; ]\s*(-?\d{1,3}(?:,\d+)?)$/.exec(s);
-      if (!m) return null;
-      const lat = Number(m[1].replace(',', '.')), lon = Number(m[2].replace(',', '.'));
-      return Math.abs(lat) <= 85 && Math.abs(lon) <= 180 ? [lat, lon] : null;
-    };
-    let v = `${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`, pos = null;
-    for (let essai = 0; essai < 3 && !pos; essai++) {
-      v = typeof saisir === 'function'
-        ? await saisir('Position du centre de votre réseau (latitude, longitude en degrés décimaux, ex. 40.7, -74.0) :', v)
-        : prompt('Latitude, longitude du centre de votre réseau :', v);
-      if (!v) break; // annulé
-      pos = lire(v);
-    }
+    let pos = await choisirPositionMonde();
+    if (pos === 'precis') pos = await choisirPositionMondePrecise();
     if (!pos) { select.value = avant; return; }
     const k = codeMonde(pos[0], pos[1]);
     let o = [...select.options].find((x) => x.value === k);

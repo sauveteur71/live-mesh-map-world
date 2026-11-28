@@ -74,6 +74,16 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
   let memo = { cible: ecoute ? ecoute.cible || null : null, connus: [] };
   if (fMemo) try { memo = { ...memo, ...lireJson(fMemo) }; } catch { /* premier lancement */ }
   const sauver = () => { if (!fMemo) return; try { ecrireSur(fMemo, JSON.stringify(memo, null, 1)); } catch (e) { journal('sauvegarde impossible :', e.message); } };
+  // Le même échec de connexion (port série débranché, companion injoignable…) revient sans fin tant que personne
+  // ne le débranche : le dire à chaque tentative (toutes les 30 s) noie le journal pour rien. On le dit en entier
+  // la première fois, puis un simple rappel de loin en loin tant que rien ne change.
+  let dernierEchec = null, repetitionsEchec = 0;
+  function journalEchec(msg) {
+    if (msg === dernierEchec) {
+      repetitionsEchec++;
+      if (repetitionsEchec % 20 === 0) journal(`${msg} (toujours, après ${repetitionsEchec} essais)`);
+    } else { dernierEchec = msg; repetitionsEchec = 0; journal(msg); }
+  }
 
   let flux = null; // socket TCP, socket d'agent ou flux WebSocket du navigateur
   let tampon = Buffer.alloc(0);
@@ -295,6 +305,7 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
     const pret = () => {
       if (gen !== generation) return;
       etat = { ...etat, connecte: true, depuis: Date.now(), erreur: null };
+      dernierEchec = null; repetitionsEchec = 0; // une connexion réussie : un prochain échec redevient intéressant à dire
       journal(`companion relié (${description}), lecture des informations`);
       clearInterval(minuterieVie);
       // Interrogation régulière de la batterie : garde la liaison vivante et donne la tension
@@ -341,7 +352,7 @@ function creerCompanion(config, { agents, surObservation, surContacts, surEtat, 
     if (c.type === 'serie') {
       // Companion branché en USB sur la machine de la carte
       let f;
-      try { f = require('../serie').ouvrirSerie(c.chemin); } catch (e) { etat = { ...etat, connecte: false, erreur: e.message }; journal(e.message); planifier(30000); notifier(); return; }
+      try { f = require('../serie').ouvrirSerie(c.chemin); } catch (e) { etat = { ...etat, connecte: false, erreur: e.message }; journalEchec(e.message); planifier(30000); notifier(); return; }
       journal(`companion sur le port série du serveur ${c.chemin}`);
       attacher(f, `USB du serveur ${c.chemin}`, 2500);
       return;
