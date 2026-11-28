@@ -221,14 +221,15 @@ config.departement = { code: texte('DEPARTEMENT', '43'), nom: texte('ZONE_NOM', 
     if (!texte('ZONE_NOM')) config.departement.nom = config.zoneNom = nomMonde(config.departement.code);
   }
 }
-// Zone « sur mesure » : un État des États-Unis ou une union d'États contigus (DEPARTEMENT=US-CA+NV+OR…)
+// Zone « sur mesure » : une ou plusieurs régions contiguës d'un même pays (DEPARTEMENT=US-CA+NV+OR,
+// CA-ON+QC, AU-NSW+VIC…) — voir src/regionsPays.js pour le mécanisme, générique à plusieurs pays
 {
-  const { estCodeEtatsUS, rectangleEtatsUS, nomEtatsUS } = require('./etatsUS');
-  if (estCodeEtatsUS(config.departement.code)) {
+  const { estCodeRegion, rectangleRegion, nomRegion } = require('./regionsPays');
+  if (estCodeRegion(config.departement.code)) {
     config.departement.code = config.departement.code.toUpperCase();
-    if (!texte('ZONE_BBOX')) config.zone = rectangleEtatsUS(config.departement.code);
+    if (!texte('ZONE_BBOX')) config.zone = rectangleRegion(config.departement.code);
     if (!texte('CARTE_CENTRE_LAT') && config.zone) { config.carte.centreLat = (config.zone[0] + config.zone[2]) / 2; config.carte.centreLon = (config.zone[1] + config.zone[3]) / 2; }
-    if (!texte('ZONE_NOM')) config.departement.nom = config.zoneNom = nomEtatsUS(config.departement.code);
+    if (!texte('ZONE_NOM')) config.departement.nom = config.zoneNom = nomRegion(config.departement.code);
   }
 }
 config.inscriptions = texte('INSCRIPTIONS', 'validation'); // fermees | validation | ouvertes
@@ -302,18 +303,18 @@ try {
 if (fs.existsSync(config.fichierReglages) && (texte('ZONE_BBOX') || texte('DEPARTEMENT') || texte('ZONE_NOM'))) {
   console.error(new Date().toISOString(), `[Réglages] ${config.fichierReglages} existe : les variables ZONE_BBOX/DEPARTEMENT/ZONE_NOM du .env sont ignorées. Pour changer la zone, utilisez la page Réglages de l’interface d’administration (un changement direct dans ${path.basename(config.fichierReglages)} demande ensuite un redémarrage).`);
 }
-// Zone invalide (ni département français connu, ni position monde MN50E004…, ni zone sur mesure US-CA+NV…) :
-// le plus souvent reglages.json modifié à la main, en contournant la validation de /api/reglages. Le relief se
-// chargerait quand même (sur le mauvais département, ou pas du tout) sans rien dire : on le signale clairement
-// au démarrage, sans bloquer.
+// Zone invalide (ni département français connu, ni position monde MN50E004…, ni zone sur mesure
+// US-CA+NV / CA-ON+QC / AU-NSW…) : le plus souvent reglages.json modifié à la main, en contournant la
+// validation de /api/reglages. Le relief se chargerait quand même (sur le mauvais département, ou pas
+// du tout) sans rien dire : on le signale clairement au démarrage, sans bloquer.
 {
   const { estCodeMonde } = require('./monde');
-  const { estCodeEtatsUS } = require('./etatsUS');
+  const { estCodeRegion } = require('./regionsPays');
   let departementsConnus = new Set();
   try { departementsConnus = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'donnees-ref', 'departements.geojson'), 'utf8')).features.map((f) => f.properties.code)); } catch { /* liste indisponible : on ne bloque pas pour autant */ }
   const code = config.departement.code;
-  if (!estCodeMonde(code) && !estCodeEtatsUS(code) && !departementsConnus.has(code) && !departementsConnus.has(String(code || '').toUpperCase())) {
-    console.error(new Date().toISOString(), `[Réglages] Code de zone « ${code} » invalide (ni département français, ni position monde du type MN50E004, ni zone sur mesure du type US-CA+NV) : la zone sera incorrecte. Configurez-la depuis la page Réglages de l’interface d’administration.`);
+  if (!estCodeMonde(code) && !estCodeRegion(code) && !departementsConnus.has(code) && !departementsConnus.has(String(code || '').toUpperCase())) {
+    console.error(new Date().toISOString(), `[Réglages] Code de zone « ${code} » invalide (ni département français, ni position monde du type MN50E004, ni zone sur mesure du type US-CA+NV/CA-ON+QC/AU-NSW) : la zone sera incorrecte. Configurez-la depuis la page Réglages de l’interface d’administration.`);
   }
 }
 config.lireCanaux = lireCanaux;

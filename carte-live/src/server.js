@@ -72,11 +72,14 @@ const { creerReseau } = require('./reseau');
 const { creerSourceMeshMonitor } = require('./meshmonitor');
 const { creerSourceRadio } = require('./radio');
 const { creerAnalyse } = require('./analyse');
-const { creerRelief, contourDepartement, nomDepartement } = require('./relief');
+const { creerRelief, contourDepartement, nomDepartement, estimerRam, RELIEF_RAM_AVERTISSEMENT_SEUIL } = require('./relief');
 const { creerReliefGrossier } = require('./relief-grossier');
 const { creerCacheRelief } = require('./relief-cache');
 const { estCodeMonde, codeMonde, nomMonde, lieuxMonde, lieuxZone, voisinsMonde } = require('./monde');
-const { estCodeEtatsUS, codesEtatsUS, construireCode, nomEtatsUS, listeEtatsUS, sontContigus, rectangleEtatsUS, surfaceApproxKm2, LIMITE_SURFACE_KM2, MAX_ETATS } = require('./etatsUS');
+const { paysConnu, listePays, maxRegions, estCodeRegion, codesRegion, construireCode, nomRegion, listeRegions, sontContigus, rectangleRegion, surfaceApproxKm2, LIMITE_SURFACE_KM2 } = require('./regionsPays');
+// Même seuil (en cellules de relief) que RELIEF_RAM_AVERTISSEMENT_SEUIL dans relief.js, converti en km² pour
+// être comparé à surfaceApproxKm2() ici : avertir avant d'enregistrer la zone, sans attendre le redémarrage.
+const SEUIL_AVERTISSEMENT_KM2 = RELIEF_RAM_AVERTISSEMENT_SEUIL * 0.0625;
 const { creerComptes } = require('./comptes');
 const { creerAdministration } = require('./administration');
 const { creerAgents } = require('./agents');
@@ -540,9 +543,10 @@ async function importerPaquetFrance() {
   } finally { try { fs.unlinkSync(tmp); } catch { /* déjà */ } }
 }
 // Carte hors de France : pas de « France entière », mais la zone de la carte et ses 8 carrés voisins (relief Copernicus)
-// Zone « sur mesure » (États américains) : même chose, sans carrés voisins (pas de notion de voisinage pour une
-// union d'États — codesAPreparer() ne renvoie alors que la zone elle-même, voisinsMonde() ne la reconnaissant pas)
-const carteMonde = () => estCodeMonde(config.departement.code) || estCodeEtatsUS(config.departement.code);
+// Zone « sur mesure » (États/provinces/territoires d'un même pays) : même chose, sans carrés voisins (pas de
+// notion de voisinage pour une union de régions — codesAPreparer() ne renvoie alors que la zone elle-même,
+// voisinsMonde() ne la reconnaissant pas)
+const carteMonde = () => estCodeMonde(config.departement.code) || estCodeRegion(config.departement.code);
 const codesAPreparer = () => (carteMonde() ? voisinsMonde(String(config.departement.code).toUpperCase()) : listeDepartements.map((d) => d.code));
 async function prechargerFrance() {
   if (precharge.enCours) return;
@@ -895,7 +899,7 @@ async function villesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `villes-${code}.json`);
   try { return lireJson(f); } catch { /* à télécharger */ }
   if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
-  if (estCodeEtatsUS(code)) { const l = await lieuxZone(rectangleEtatsUS(code)); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
+  if (estCodeRegion(code)) { const l = await lieuxZone(rectangleRegion(code)); const res = l.sort((a, b) => b.population - a.population).slice(0, 20); ecrireSur(f, JSON.stringify(res)); return res; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).sort((a, b) => b.population - a.population).slice(0, 20)
@@ -948,7 +952,7 @@ async function communesDepartement(code) {
   const f = path.join(path.dirname(config.fichierBase), `communes-${code}.json`);
   try { return lireJson(f); } catch { /* à télécharger */ }
   if (estCodeMonde(code)) { const l = await lieuxMonde(code); const res = l; ecrireSur(f, JSON.stringify(res)); return res; }
-  if (estCodeEtatsUS(code)) { const l = await lieuxZone(rectangleEtatsUS(code)); ecrireSur(f, JSON.stringify(l)); return l; }
+  if (estCodeRegion(code)) { const l = await lieuxZone(rectangleRegion(code)); ecrireSur(f, JSON.stringify(l)); return l; }
   const r = await fetch(`https://geo.api.gouv.fr/departements/${encodeURIComponent(code)}/communes?fields=nom,centre,population&format=json`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('API Géo : HTTP ' + r.status);
   const l = (await r.json()).filter((c) => c.centre && c.population).map((c) => ({ nom: c.nom, lat: c.centre.coordinates[1], lon: c.centre.coordinates[0], population: c.population }));
@@ -2442,14 +2446,17 @@ function preparerReglages(b, existants = {}) {
   const r = { ...existants };
   const txt = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined);
   if (txt(b.titre)) r.titre = txt(b.titre, 80);
-  // Zone « sur mesure » (un ou plusieurs États américains) : soit un code tout fait (US-CA+NV),
-  // soit une liste d'États choisis dans l'interface (b.etatsUS = ['CA','NV','OR']), plus pratique à cocher
-  if (Array.isArray(b.etatsUS) && b.etatsUS.length) b.departement = construireCode(b.etatsUS) || b.departement;
+  // Zone « sur mesure » (une ou plusieurs régions contiguës d'un même pays) : soit un code tout fait
+  // (US-CA+NV, CA-ON+QC, AU-NSW+VIC…), soit un pays + une liste de régions choisies dans l'interface
+  // (b.pays = 'CA', b.regions = ['ON','QC']), plus pratique à cocher. b.etatsUS reste accepté (ancienne
+  // forme, États-Unis implicite) pour ne rien casser côté interface si une page en cache l'envoie encore.
+  if (Array.isArray(b.regions) && b.regions.length && paysConnu(b.pays)) b.departement = construireCode(b.pays, b.regions) || b.departement;
+  else if (Array.isArray(b.etatsUS) && b.etatsUS.length) b.departement = construireCode('US', b.etatsUS) || b.departement;
   if (b.departement) {
     const code = String(b.departement).toUpperCase();
     let d;
     if (estCodeMonde(code)) d = { code, nom: nomMonde(code) };
-    else if (estCodeEtatsUS(code)) d = { code, nom: nomEtatsUS(code) };
+    else if (estCodeRegion(code)) d = { code, nom: nomRegion(code) };
     else d = listeDepartements.find((x) => x.code === code);
     if (!d) throw new Error('Département inconnu');
     const geom = contourDepartement(d.code);
@@ -2460,15 +2467,21 @@ function preparerReglages(b, existants = {}) {
     r.zoneNom = d.nom;
     r.centre = [+((z[0] + z[2]) / 2).toFixed(4), +((z[1] + z[3]) / 2).toFixed(4)];
     r.zoom = 9;
-    if (!txt(b.titre) && !existants.titre) r.titre = (estCodeMonde(d.code) || estCodeEtatsUS(d.code)) ? 'Live mesh map' : `Réseau Meshtastic · ${d.nom}`;
+    if (!txt(b.titre) && !existants.titre) r.titre = (estCodeMonde(d.code) || estCodeRegion(d.code)) ? 'Live mesh map' : `Réseau Meshtastic · ${d.nom}`;
     delete r.avertissementZone;
-    if (estCodeEtatsUS(d.code)) {
-      const codes = codesEtatsUS(d.code);
+    if (estCodeRegion(d.code)) {
+      const pays = d.code.slice(0, 2);
+      const codes = codesRegion(d.code);
       // Surface approximative à la résolution du relief (250 m) : au-delà, le calcul du relief refusera la
       // zone (voir le garde-fou mémoire de creerRelief) — autant le dire ici, avant d'enregistrer et de redémarrer
       const aireKm2 = surfaceApproxKm2(d.code);
-      if (aireKm2 > LIMITE_SURFACE_KM2) throw new Error(`Zone trop grande pour le relief (≈ ${Math.round(aireKm2).toLocaleString('fr')} km², limite ≈ ${Math.round(LIMITE_SURFACE_KM2).toLocaleString('fr')} km²) : choisissez moins d'États, ou de plus petits`);
-      if (!sontContigus(codes)) r.avertissementZone = `Attention : ${d.nom} ne semble pas former un seul bloc continu (États non limitrophes ou se touchant juste par un coin)`;
+      if (aireKm2 > LIMITE_SURFACE_KM2) throw new Error(`Zone trop grande pour le relief (≈ ${Math.round(aireKm2).toLocaleString('fr')} km², limite ≈ ${Math.round(LIMITE_SURFACE_KM2).toLocaleString('fr')} km²) : choisissez moins de régions, ou de plus petites (RELIEF_CELLULES_MAX permet de relever cette limite si la machine a la RAM nécessaire)`);
+      const avertissements = [];
+      if (!sontContigus(pays, codes)) avertissements.push(`Attention : ${d.nom} ne semble pas former un seul bloc continu (régions non limitrophes ou se touchant juste par un coin)`);
+      // Même seuil que RELIEF_RAM_AVERTISSEMENT_SEUIL dans relief.js (25 000 000 cellules par défaut) : averti
+      // ici aussi, avant le redémarrage, plutôt que seulement dans le journal une fois la carte relancée
+      if (RELIEF_RAM_AVERTISSEMENT_SEUIL > 0 && aireKm2 > SEUIL_AVERTISSEMENT_KM2) avertissements.push(`Zone très étendue (≈ ${Math.round(aireKm2).toLocaleString('fr')} km²) : ${estimerRam(aireKm2 / 0.0625).go} Go de RAM recommandés`);
+      if (avertissements.length) r.avertissementZone = avertissements.join(' — ');
     }
   }
   if (b.mqtt) {
@@ -2641,8 +2654,17 @@ app.post('/api/reglages', (req, res) => {
   res.json({ ok: true, redemarrage: true, avertissement: r.avertissementZone });
   enregistrerReglagesEtRedemarrer(r, u.identifiant);
 });
-// Liste des États américains proposés pour une zone « sur mesure » (sélecteur pays/État)
-app.get('/api/etats-us', (req, res) => res.json({ etats: listeEtatsUS(), max: MAX_ETATS }));
+// Liste des pays proposés pour une zone « sur mesure » (bloc dépliable de la page Réglages)
+app.get('/api/regions-pays', (req, res) => res.json({ pays: listePays() }));
+// Régions (États/provinces/territoires) d'un pays donné, pour les cases à cocher de la zone « sur mesure »
+app.get('/api/regions/:pays', (req, res) => {
+  const pays = String(req.params.pays || '').toUpperCase();
+  if (!paysConnu(pays)) return res.status(404).json({ erreur: 'Pays inconnu' });
+  res.json({ regions: listeRegions(pays), max: maxRegions(pays) });
+});
+// Ancienne route (avant la généralisation à plusieurs pays, 1.13.0) : gardée pour une page encore en
+// cache côté navigateur, ou une intégration externe qui l'appellerait directement
+app.get('/api/etats-us', (req, res) => res.json({ etats: listeRegions('US'), max: maxRegions('US') }));
 
 // ---- Broker MQTT : état, statistiques et test d'une configuration (admin) --------------------
 const masquerUrl = (u) => String(u || '').replace(/\/\/[^@/]*@/, '//***@');

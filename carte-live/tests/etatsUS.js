@@ -48,7 +48,10 @@ test('États-Unis : contiguïté (avertissement, jamais bloquant) — vrais vois
 test('États-Unis : surface approximative — un grand État seul passe, une très grande union d’États est refusée', () => {
   assert.ok(etatsUS.surfaceApproxKm2('US-CA') < etatsUS.LIMITE_SURFACE_KM2, 'la Californie seule doit passer');
   assert.ok(etatsUS.surfaceApproxKm2('US-TX') < etatsUS.LIMITE_SURFACE_KM2, 'le Texas seul doit passer');
-  assert.ok(etatsUS.surfaceApproxKm2('US-CA+NV+OR+WA+ID+UT') > etatsUS.LIMITE_SURFACE_KM2, 'les 6 grands États de l’Ouest réunis doivent dépasser la limite (relief refusé)');
+  // Plafond relevé en 1.14.0 (pour que le Nunavut canadien passe seul, voir regionsPays.js) : les 6 grands États
+  // de l'Ouest américain réunis (≈ 2,7 Mkm²) passent désormais aussi, et il faut une union bien plus extrême —
+  // d'un bout à l'autre du pays — pour retrouver un cas refusé par ce même garde-fou.
+  assert.ok(etatsUS.surfaceApproxKm2('US-CA+FL+ME+MT+TX+WA') > etatsUS.LIMITE_SURFACE_KM2, 'une union d’États aux deux bouts du pays (Californie, Floride, Maine, Montana, Texas, Washington) doit dépasser la limite (relief refusé)');
 });
 
 test('relief.js : contourDepartement()/nomDepartement() délèguent à etatsUS pour un code US-…', () => {

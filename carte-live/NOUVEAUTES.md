@@ -2,6 +2,17 @@
 
 The section of each version is copied as is into the GitHub release notes.
 
+## 1.14.0
+
+### 🇨🇦🇦🇺 Custom zone: now also Canada and Australia
+- The "custom zone" checklist (**Réglages › Département › Zone sur mesure**) introduced for US states in 1.13.0 now also covers **Canada** (10 provinces + 3 territories) and **Australia** (6 states + 2 mainland territories): pick the country first, then check one region, or several that touch, exactly as for the United States.
+- Contours come from Natural Earth (public domain, 10 m admin-1 boundaries), simplified to keep each country's file in the same order of magnitude as the US one. A few small, remote island territories are left out on purpose (Jervis Bay Territory, Macquarie Island, Ashmore and Cartier Islands, Lord Howe Island): merging them into their parent state/province would have inflated its bounding box for no practical gain — see `wiki/Conception-zones-multi-regions.md` for the detail.
+- The mechanism itself (code format, union of contours, contiguity warning, memory guard before saving) is now one generic module (`src/regionsPays.js`) shared by all three countries instead of being duplicated — `src/etatsUS.js` keeps working unchanged for any `US-CA+NV+OR`-style zone already in production.
+- `GET /api/etats-us` still answers as before (back-compat); the interface now also uses `GET /api/regions-pays` and `GET /api/regions/:pays`.
+- `DEPARTEMENT=CA-ON+QC` / `AU-NSW+VIC`-style values also work directly in `.env`.
+- **Memory guard raised so every region fits alone**: a few Canadian provinces/territories and Australian states (Nunavut being by far the largest, ≈ 9.16 Mkm² bounding box) are far bigger than any single US state. `RELIEF_CELLULES_MAX`'s default is raised from 32 M to **160 M cells** (≈ 10 Mkm²) so each one of them — even Nunavut, with about 9 % margin — now loads on its own with the out-of-the-box settings; only a combination of several very large regions (e.g. several large US states at once, or two huge Australian states together) is still refused. Memory actually used stays proportional to the real size of the chosen zone, never to this ceiling — a French department or a single average-sized state/province uses exactly as much RAM as before.
+- **New, non-blocking log line for a very large zone**: past a second, lower threshold (25 M cells by default, ≈ 1.56 Mkm², about 50 times Gironde — the largest French department), the server logs, once, a clear recommendation ("zone très étendue : X Go de RAM recommandés") instead of leaving the administrator to guess after an out-of-memory crash. The same recommendation also appears in the Settings page before restarting, next to the contiguity warning. Both thresholds are configurable (`RELIEF_CELLULES_MAX`, `RELIEF_RAM_AVERTISSEMENT_SEUIL`), and setting either to `0` disables it.
+
 ## 1.13.0
 
 ### 🌍 Pick a country (and a US state) instead of typing coordinates
@@ -13,7 +24,7 @@ The section of each version is copied as is into the GitHub release notes.
 
 ### 🇺🇸 Custom zone: one US state, or several that touch
 - **Réglages › Département › Zone sur mesure**: a checklist of up to 6 US states (reachable from the same "outside France" screen above, as the advanced path for the United States). The map's zone, contour, centering and relief then cover the union of the states you pick (e.g. "Californie + Nevada + Oregon"), instead of a single fixed 1°×1° square.
-- Relief switches to Copernicus DEM (as for any zone outside France). A size guard refuses a zone that would need too much memory for the relief grid (several very large western states combined), with a clear message — see `wiki/Conception-zones-multi-etats.md` for the limits assumed.
+- Relief switches to Copernicus DEM (as for any zone outside France). A size guard refuses a zone that would need too much memory for the relief grid (several very large western states combined), with a clear message — see `wiki/Conception-zones-multi-regions.md` for the limits assumed.
 - A soft warning (never blocking) appears if the chosen states don't look contiguous.
 - Alaska isn't offered yet (its territory crosses the 180° meridian, not handled by this first version); outside the US isn't covered yet either.
 - `DEPARTEMENT=US-CA+NV+OR` also works directly in `.env` for a first install.
