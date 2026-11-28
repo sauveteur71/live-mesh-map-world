@@ -6904,11 +6904,19 @@ async function choisirPositionMonde() {
   return new Promise((resoudre) => {
     let d = document.getElementById('dlg-monde');
     if (!d) { d = document.createElement('dialog'); d.id = 'dlg-monde'; document.body.appendChild(d); }
+    // Liste trop longue (~250 pays) pour rester à plat : regroupée par continent, dans un ordre fixe, pour que
+    // le menu se parcoure vite (chaque continent restant trié par nom, comme avant).
+    const ORDRE_CONTINENTS = ['Europe', 'Afrique', 'Amérique', 'Asie', 'Océanie'];
     const pays = (window.PAYS_MONDE || []).slice().sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const optionsPaysParContinent = ORDRE_CONTINENTS.map((continent) => {
+      const liste = pays.filter((p) => p.continent === continent);
+      if (!liste.length) return '';
+      return `<optgroup label="${esc(continent)}">${liste.map((p) => `<option value="${p.code}" data-lat="${p.lat}" data-lon="${p.lon}">${esc(p.nom)}</option>`).join('')}</optgroup>`;
+    }).join('');
     d.innerHTML = `<button class="fermer" type="button" data-fermer title="Fermer">×</button><h3>🌍 Position du réseau</h3>
       <p class="note">Choisissez le pays où est installé le réseau (puis l’État pour les États-Unis). La carte calcule elle-même la zone de relief la plus proche ; la position pourra être affinée plus tard.</p>
       <div class="parametres">
-        <label>Pays du réseau <select name="pays" style="width:230px"><option value="">— choisir —</option>${pays.map((p) => `<option value="${p.code}" data-lat="${p.lat}" data-lon="${p.lon}">${esc(p.nom)}</option>`).join('')}</select></label>
+        <label>Pays du réseau <select name="pays" style="width:230px"><option value="">— choisir —</option>${optionsPaysParContinent}</select></label>
         <label id="champ-etat-monde" hidden>État de ce pays <select name="etat" style="width:230px"></select></label>
       </div>
       <div class="actions-prop"><button type="button" class="principal" data-ok disabled>Confirmer la position</button><button type="button" data-precis>Saisir des coordonnées précises…</button></div>
