@@ -6837,13 +6837,17 @@ const ROLES_COMPTE = { membre: 'Membre', gestionnaire: 'Gestionnaire de secteur'
 
 // Zone hors de France : carré de 1° × 1° nommé d'après son coin sud-ouest (ex. MN40W075), relief Copernicus
 const RE_MONDE = /^M([NS])(\d{2})([EW])(\d{3})$/;
-// Zone « sur mesure » (un ou plusieurs États américains réglés depuis le bloc dédié de la page Réglages,
-// voir rendreEtatsUS) : juste assez reconnu ici pour l'afficher correctement dans ce sélecteur de département
-// sans le modifier — le réglage lui-même se fait par les cases à cocher, pas par ce menu.
-const RE_ETATS_US = /^US-[A-Z]{2}(\+[A-Z]{2}){0,5}$/;
-function nomEtatsUSClient(code) {
-  const m = /^US-(.+)$/.exec(code || ''); if (!m) return code;
-  return '🇺🇸 ' + m[1].split('+').join(' + ');
+// Zone « sur mesure » (une ou plusieurs régions d'un même pays réglées depuis le bloc dédié de la page
+// Réglages, voir rendreRegionsSurMesure) : juste assez reconnu ici pour l'afficher correctement dans ce
+// sélecteur de département sans le modifier — le réglage lui-même se fait par les cases à cocher, pas
+// par ce menu. Générique à tout pays à préfixe à 2 lettres (US, CA, AU…) sans dépendre de la liste exacte
+// des régions, pour ne pas avoir à la télécharger seulement pour afficher ce menu.
+const RE_REGIONS_PAYS = /^([A-Z]{2})-[A-Z]{2,4}(\+[A-Z]{2,4}){0,5}$/;
+const DRAPEAUX_PAYS = { US: '🇺🇸', CA: '🇨🇦', AU: '🇦🇺' };
+function nomRegionsClient(code) {
+  const m = RE_REGIONS_PAYS.exec(code || ''); if (!m) return code;
+  const drapeau = DRAPEAUX_PAYS[m[1]] || '🌍';
+  return drapeau + ' ' + code.slice(3).split('+').join(' + ');
 }
 function codeMonde(lat, lon) {
   const la = Math.floor(lat), lo = Math.floor(lon), p = (n, l) => String(Math.abs(n)).padStart(l, '0');
@@ -6946,8 +6950,8 @@ async function choisirPositionMonde() {
 async function optionsDepartements(select, code) {
   const liste = await api('/api/departements').catch(() => []);
   const monde = RE_MONDE.test(code || '');
-  const etatsUS = RE_ETATS_US.test(code || '');
-  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}${etatsUS ? `<option value="${esc(code)}" selected>${esc(nomEtatsUSClient(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option></optgroup>`
+  const regionsPays = RE_REGIONS_PAYS.test(code || '');
+  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}${regionsPays ? `<option value="${esc(code)}" selected>${esc(nomRegionsClient(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option></optgroup>`
     + `<optgroup label="France (relief IGN)">${liste.map((d) => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${d.code} · ${esc(d.nom)}</option>`).join('')}</optgroup>`;
   let avant = select.value;
   select.addEventListener('change', async () => {
