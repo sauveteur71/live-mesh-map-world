@@ -1016,6 +1016,7 @@ async function rendreReglages() {
       <div class="grille-form">
         <label>Nom de la carte <input name="titre" value="${esc(r.titre)}" maxlength="80"></label>
         <label>Département <select name="departement"></select><small>Fixe la zone, le contour et le centrage de la carte</small></label>
+        <div class="large-col" id="bloc-etats-us"></div>
         <div class="large-col note-source">${r.depuisPage && r.depuisPage.mqtt ? `⚠️ Le serveur MQTT est réglé ici : ces valeurs <b>remplacent celles du .env</b>${r.env && r.env.mqtt.url ? ` (MQTT_URL=${esc(r.env.mqtt.url)})` : ''}. <button type="button" class="mini" data-revenir-env="mqtt">Revenir au .env</button>` : 'ℹ️ Serveur MQTT lu dans le fichier .env. Une valeur changée ici le remplacera (le .env ne sera plus lu pour elle).'}</div>
         <label>Serveur MQTT <input name="mqttUrl" value="${esc(r.mqtt.url)}"></label>
         <label>Sujet racine <input name="mqttRacine" value="${esc(r.mqtt.racine)}"></label>
@@ -1034,6 +1035,7 @@ async function rendreReglages() {
     <div class="bloc-france" id="bloc-france"></div>`;
   rendreFrance();
   optionsDepartements(z.querySelector('[name=departement]'), r.departement.code);
+  rendreEtatsUS(z, r.departement.code);
   z.querySelectorAll('[data-revenir-env]').forEach((b) => (b.onclick = async () => {
     if (!(await confirmer('Reprendre les valeurs du fichier .env pour ce réglage ? Le service redémarre.'))) return;
     try { const x = await postJson('/api/reglages', { revenirEnv: [b.dataset.revenirEnv] }); if (x.redemarrage) attendreRedemarrage('Réglages du .env repris ✓'); } catch (err) { alert(err.message); }
@@ -1046,9 +1048,39 @@ async function rendreReglages() {
       mqtt: { url: f.mqttUrl.value, racine: f.mqttRacine.value, utilisateur: f.mqttUtilisateur.value, motDePasse: f.mqttMotDePasse.value, sujetsSupplementaires: f.mqttSujets.value },
     };
     if (f.departement.value !== r.departement.code) corps.departement = f.departement.value;
-    try { await postJson('/api/reglages', corps); $('#dlg-gestion').close(); attendreRedemarrage('Réglages enregistrés'); }
-    catch (x) { $('#retour-reglages').textContent = x.message; }
+    // Zone « sur mesure » (un ou plusieurs États américains cochés) : prioritaire sur le menu Département
+    const etatsCoches = [...z.querySelectorAll('[data-etat-us]:checked')].map((c) => c.value);
+    if (etatsCoches.length) corps.etatsUS = etatsCoches;
+    try {
+      const rep = await postJson('/api/reglages', corps); $('#dlg-gestion').close();
+      attendreRedemarrage(rep.avertissement ? `Réglages enregistrés — ${rep.avertissement}` : 'Réglages enregistrés');
+    } catch (x) { $('#retour-reglages').textContent = x.message; }
   };
+}
+// Zone « sur mesure » : un ou plusieurs États américains limitrophes (première version : États-Unis seulement).
+// Coché ici, le choix l'emporte sur le menu Département au moment d'enregistrer.
+async function rendreEtatsUS(z, codeActuel) {
+  const b = z.querySelector('#bloc-etats-us');
+  if (!b) return;
+  let d;
+  try { d = await api('/api/etats-us'); } catch { b.innerHTML = ''; return; }
+  const RE = /^US-([A-Z]{2})((?:\+[A-Z]{2}){0,5})$/;
+  const m = RE.exec(String(codeActuel || '').toUpperCase());
+  const deja = m ? [m[1], ...m[2].split('+').filter(Boolean)] : [];
+  b.innerHTML = `
+    <details ${deja.length ? 'open' : ''}>
+      <summary>Zone sur mesure : un ou plusieurs États américains limitrophes (${d.max} au plus)</summary>
+      <p class="note">Cochez un État, ou plusieurs qui se touchent : la zone de la carte devient leur contour réuni (relief Copernicus, comme pour une zone hors de France). Les cases cochées ici remplacent le menu « Département » ci-dessus.</p>
+      <div class="liste-etats-us">${d.etats.map((e) => `<label class="case-etat-us"><input type="checkbox" data-etat-us value="${e.code}" ${deja.includes(e.code) ? 'checked' : ''}> ${esc(e.nom)}</label>`).join('')}</div>
+      <p class="note" id="compte-etats-us"></p>
+    </details>`;
+  const compter = () => {
+    const n = b.querySelectorAll('[data-etat-us]:checked').length;
+    b.querySelectorAll('[data-etat-us]').forEach((c) => { c.disabled = !c.checked && n >= d.max; });
+    $('#compte-etats-us').textContent = n ? `${n} État${n > 1 ? 's' : ''} coché${n > 1 ? 's' : ''} sur ${d.max} au plus.` : '';
+  };
+  b.querySelectorAll('[data-etat-us]').forEach((c) => (c.onchange = compter));
+  compter();
 }
 // Carte publique : couverture sur le département de la carte ou sur toute la France, préparation du relief
 // Toute la France (administrateur) : la même chose que dans Réglages, en accès direct depuis Outils

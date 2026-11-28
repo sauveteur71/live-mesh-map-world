@@ -6837,6 +6837,14 @@ const ROLES_COMPTE = { membre: 'Membre', gestionnaire: 'Gestionnaire de secteur'
 
 // Zone hors de France : carré de 1° × 1° nommé d'après son coin sud-ouest (ex. MN40W075), relief Copernicus
 const RE_MONDE = /^M([NS])(\d{2})([EW])(\d{3})$/;
+// Zone « sur mesure » (un ou plusieurs États américains réglés depuis le bloc dédié de la page Réglages,
+// voir rendreEtatsUS) : juste assez reconnu ici pour l'afficher correctement dans ce sélecteur de département
+// sans le modifier — le réglage lui-même se fait par les cases à cocher, pas par ce menu.
+const RE_ETATS_US = /^US-[A-Z]{2}(\+[A-Z]{2}){0,5}$/;
+function nomEtatsUSClient(code) {
+  const m = /^US-(.+)$/.exec(code || ''); if (!m) return code;
+  return '🇺🇸 ' + m[1].split('+').join(' + ');
+}
 function codeMonde(lat, lon) {
   const la = Math.floor(lat), lo = Math.floor(lon), p = (n, l) => String(Math.abs(n)).padStart(l, '0');
   return `M${la >= 0 ? 'N' : 'S'}${p(la, 2)}${lo >= 0 ? 'E' : 'W'}${p(lo, 3)}`;
@@ -6938,7 +6946,8 @@ async function choisirPositionMonde() {
 async function optionsDepartements(select, code) {
   const liste = await api('/api/departements').catch(() => []);
   const monde = RE_MONDE.test(code || '');
-  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option></optgroup>`
+  const etatsUS = RE_ETATS_US.test(code || '');
+  select.innerHTML = `<optgroup label="🌍 Monde (relief Copernicus)">${monde ? `<option value="${esc(code)}" selected>🌍 ${esc(nomMonde(code))}</option>` : ''}${etatsUS ? `<option value="${esc(code)}" selected>${esc(nomEtatsUSClient(code))}</option>` : ''}<option value="choisir-monde">🌍 Hors de France : choisir la position…</option></optgroup>`
     + `<optgroup label="France (relief IGN)">${liste.map((d) => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${d.code} · ${esc(d.nom)}</option>`).join('')}</optgroup>`;
   let avant = select.value;
   select.addEventListener('change', async () => {
