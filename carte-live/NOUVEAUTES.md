@@ -9,6 +9,7 @@ The section of each version is copied as is into the GitHub release notes.
 - Reference positions are a capital or a large city per country/state — approximate, but close enough to start from; the exact position can still be refined later.
 - A "**Enter precise coordinates…**" link keeps the old free-text prompt available for advanced users who want to type an exact latitude/longitude.
 - Canada and Australia still use a single reference point per country for now (no province/state breakdown yet).
+- For a country with a state list, a "**— Do not specify (general position of the country) —**" entry is available too, for someone who doesn't yet know their exact state: it uses the country's own reference position (the same one used when it has no state list at all). This still covers only a single 1°×1° tile, never the whole country — refine it later from Settings once the state is known.
 
 ### 🔧 Clearer logs when the area is set by hand
 - If `reglages.json` already exists (the area has already been set once, from the wizard or the Settings page), the server now says clearly, once, at startup, that `ZONE_BBOX`/`DEPARTEMENT`/`ZONE_NOM` in the `.env` are ignored from then on — instead of silently keeping the old value with nothing in the log to explain why.

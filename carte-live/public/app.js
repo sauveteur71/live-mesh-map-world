@@ -6912,7 +6912,11 @@ async function choisirPositionMonde() {
       const etats = (window.ETATS_MONDE || {})[selPays.value];
       if (etats && etats.length) {
         champEtat.hidden = false;
-        selEtat.innerHTML = `<option value="">— choisir —</option>${etats.map((e) => `<option value="${e.code}" data-lat="${e.lat}" data-lon="${e.lon}">${esc(e.nom)}</option>`).join('')}`;
+        // « Ne pas préciser » : la tuile se calcule sur la position générale du pays (même donnée que pour un pays
+        // sans découpage), pour débloquer qui ne connaît pas encore son État exact. Une seule case de 1°×1° reste
+        // couverte, pas tout le pays : à affiner ensuite depuis Réglages si besoin.
+        const p = pays.find((x) => x.code === selPays.value);
+        selEtat.innerHTML = `<option value="">— choisir —</option>${etats.map((e) => `<option value="${e.code}" data-lat="${e.lat}" data-lon="${e.lon}">${esc(e.nom)}</option>`).join('')}${p ? `<option value="__pays__" data-lat="${p.lat}" data-lon="${p.lon}">— Ne pas préciser (position générale du pays) —</option>` : ''}`;
       } else { champEtat.hidden = true; selEtat.innerHTML = ''; }
       majBouton();
     };
