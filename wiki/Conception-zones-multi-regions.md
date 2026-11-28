@@ -121,43 +121,62 @@ surface** qui limite réellement une sélection pour le Canada et l'Australie, b
 de régions — descendre ce dernier à 2 ou 3 pour ces deux pays n'aurait rien changé en pratique, et
 aurait compliqué le code pour rien.
 
-**Surface : le vrai plafond, nettement plus contraignant au Canada et en Australie qu'aux États-Unis.**
-Le garde-fou mémoire (`RELIEF_CELLULES_MAX`, 32 000 000 cellules par défaut, soit `LIMITE_SURFACE_KM2`
-≈ 2 000 000 km² une fois converti en surface) n'a pas changé depuis la 1.13.0 et reste commun aux trois
-pays (la grille de relief ne connaît pas le pays, juste le rectangle englobant de la zone). Mais,
-contrairement aux États-Unis où **chaque État, même le plus grand, passe seul** (Texas ≈ 1,7 Mkm²,
-Californie ≈ 1,1 Mkm², tous les deux sous la limite), plusieurs provinces canadiennes et deux États
-australiens dépassent cette limite **à eux seuls** :
+**Surface : le vrai plafond, et une décision prise pendant cette tâche.** Le garde-fou mémoire
+(`RELIEF_CELLULES_MAX`) reste commun aux trois pays (la grille de relief ne connaît pas le pays, juste
+le rectangle englobant de la zone). Avec le défaut de la 1.13.0 (32 000 000 cellules, soit
+`LIMITE_SURFACE_KM2` ≈ 2 000 000 km²), plusieurs provinces canadiennes et deux États australiens
+auraient dépassé cette limite **à eux seuls**, contrairement aux États-Unis où chaque État, même le
+plus grand, passait seul (Texas ≈ 1,7 Mkm², Californie ≈ 1,1 Mkm²) :
 
-| Pays | Région | Rectangle englobant (avec marge) | Sous la limite (2 Mkm²) ? |
-|---|---|---|---|
-| CA | Alberta | ≈ 0,91 Mkm² | ✅ |
-| CA | Manitoba | ≈ 1,17 Mkm² | ✅ |
-| CA | Colombie-Britannique | ≈ 2,33 Mkm² | ❌ |
-| CA | Territoires du Nord-Ouest | ≈ 2,99 Mkm² | ❌ |
-| CA | Ontario | ≈ 2,78 Mkm² | ❌ |
-| CA | Québec | ≈ 3,14 Mkm² | ❌ |
-| CA | Nunavut | ≈ 9,10 Mkm² (proche du pôle, rectangle très pessimiste) | ❌ |
-| AU | Nouvelle-Galles du Sud | ≈ 1,41 Mkm² | ✅ |
-| AU | Victoria | ≈ 0,58 Mkm² | ✅ |
-| AU | Tasmanie (sans Macquarie Island) | ≈ 0,24 Mkm² | ✅ |
-| AU | Queensland | ≈ 3,94 Mkm² | ❌ |
-| AU | Australie-Occidentale | ≈ 4,21 Mkm² | ❌ |
+| Pays | Région | Rectangle englobant (avec marge) |
+|---|---|---|
+| CA | Alberta | ≈ 0,91 Mkm² |
+| CA | Manitoba | ≈ 1,17 Mkm² |
+| CA | Colombie-Britannique | ≈ 2,33 Mkm² |
+| CA | Territoires du Nord-Ouest | ≈ 2,99 Mkm² |
+| CA | Ontario | ≈ 2,78 Mkm² |
+| CA | Québec | ≈ 3,14 Mkm² |
+| CA | Nunavut | ≈ 9,16 Mkm² (proche du pôle, rectangle très pessimiste — la plus étendue des régions couvertes ici) |
+| AU | Nouvelle-Galles du Sud | ≈ 1,41 Mkm² |
+| AU | Victoria | ≈ 0,58 Mkm² |
+| AU | Tasmanie (sans Macquarie Island) | ≈ 0,24 Mkm² |
+| AU | Queensland | ≈ 3,94 Mkm² |
+| AU | Australie-Occidentale | ≈ 4,21 Mkm² |
 
-**À dire clairement à Olivier avant de fusionner : la Colombie-Britannique, l'Ontario, le Québec, les
-Territoires du Nord-Ouest et le Nunavut — c'est-à-dire la majorité de la population canadienne — ne
-peuvent pas être choisis seuls avec les réglages par défaut.** Un administrateur dans l'une de ces
-provinces doit relever `RELIEF_CELLULES_MAX` (et disposer de la RAM en face — voir le calcul de la
-1.13.0, ≈ 300 Mo pour 32 M de cellules, donc nettement plus pour une province qui dépasse ce plafond)
-avant même de pouvoir enregistrer sa zone. C'est une vraie différence d'usage par rapport aux
-États-Unis, pas un oubli de cette tâche : le relief à 250 m de résolution sur un rectangle englobant
-aussi étendu demande mécaniquement cette mémoire, quel que soit le pays. Deux options pour la suite,
-qui restent à trancher par Olivier plutôt que décidées ici : relever le `RELIEF_CELLULES_MAX` **par
-défaut** dans l'image Docker (impact : toutes les installations, pas seulement les canadiennes, auront
-un plafond par défaut plus généreux — et donc un usage mémoire par défaut plus élevé en cas de zone
-déjà grande ailleurs), ou laisser le réglage actuel et documenter clairement, dans l'assistant
-d'installation et le wiki, qu'une grande province canadienne ou un grand État australien a besoin de ce
-réglage dès le premier démarrage.
+**Décision d'Olivier : relever le plafond par défaut** plutôt que documenter une exception pour la
+majorité de la population canadienne. `RELIEF_CELLULES_MAX` passe de 32 000 000 à **160 000 000
+cellules** (`LIMITE_SURFACE_KM2` ≈ 10 000 000 km²), calculé pour que même le Nunavut (≈ 9,16 Mkm², la
+plus grande de toutes) passe seul avec une marge d'environ 9 % — donc toutes les régions du tableau
+ci-dessus aussi. Seule une union de plusieurs très grandes régions reste refusée (par exemple
+Colombie-Britannique + Québec, ou Queensland + Australie-Occidentale, ou une poignée de grands États
+américains répartis d'un bout à l'autre du pays).
+
+**La mémoire réellement utilisée reste proportionnelle à la taille RÉELLE de la zone, jamais au
+plafond.** `RELIEF_CELLULES_MAX` ne fait que refuser une zone trop grande avant de commencer, avec un
+message clair plutôt qu'un plantage par manque de mémoire en cours de calcul (voir `creerRelief()`
+dans `relief.js`) : les tableaux de relief (`Float32Array`/`Uint8Array`/`Int32Array`) sont dimensionnés
+sur `nLat × nLon` de la zone effectivement choisie, pas sur le plafond. Un département français ou un
+seul État/province de taille courante utilise donc exactement la même mémoire qu'avant ce changement,
+quel que soit le plafond réglé — relever le défaut pour le Canada/l'Australie **ne pénalise aucune
+petite installation existante**. Vérifié : Haute-Loire (département de la carte de référence) ≈
+275 000 cellules, Texas (plus grand État américain couvert ici) ≈ 27 M de cellules — tous les deux
+restent très loin, dans un sens comme dans l'autre, du nouveau plafond.
+
+**Nouvel avertissement, non bloquant, pour une zone très étendue.** Relever le plafond par défaut veut
+dire qu'une très grande zone (un grand territoire canadien, par exemple) peut désormais démarrer sans
+erreur, mais avec un vrai besoin de RAM que le message d'erreur du plafond ne dit plus (puisqu'il ne se
+déclenche plus). Un second seuil, plus bas et indépendant du plafond (`RELIEF_RAM_AVERTISSEMENT_SEUIL`,
+25 000 000 cellules par défaut ≈ 1,56 Mkm², à peu près 50 fois la Gironde — le plus grand département
+français), déclenche un simple message dans le journal au démarrage (`creerRelief()`, fonction
+`estimerRam()` partagée avec `server.js`) : « zone très étendue (≈ X km²) : Y Go de RAM recommandés »,
+sans jamais bloquer. Le même message est repris dans la réponse de `POST /api/reglages` (à côté de
+l'avertissement de contiguïté), pour que l'administrateur le voie avant de redémarrer, pas seulement
+dans les journaux après coup. `estimerRam(cellules)` reste une estimation volontairement généreuse (les
+trois tableaux de base à 9 octets/cellule, doublés pour les calculs de couverture radio transitoires,
+plus 1 Go de marge pour Node/le système) : pour le Nunavut (≈ 146,5 M de cellules réelles, sous le
+nouveau plafond de 160 M), cela donne 4 Go recommandés — cohérent avec le repère déjà documenté en
+1.13.0 pour une grande zone. Les deux seuils se réglent indépendamment par variable d'environnement
+(`0` désactive chacun séparément) ; voir `.env.exemple` pour le détail.
 
 **Contiguïté : avertissement, jamais blocage**, comme en 1.13.0 — `sontContigus(pays, codes)` reste une
 distance minimale entre anneaux extérieurs (seuil ≈ 6 km), pas un vrai calcul de frontière partagée.

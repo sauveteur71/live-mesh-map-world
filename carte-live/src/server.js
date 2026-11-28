@@ -72,11 +72,14 @@ const { creerReseau } = require('./reseau');
 const { creerSourceMeshMonitor } = require('./meshmonitor');
 const { creerSourceRadio } = require('./radio');
 const { creerAnalyse } = require('./analyse');
-const { creerRelief, contourDepartement, nomDepartement } = require('./relief');
+const { creerRelief, contourDepartement, nomDepartement, estimerRam, RELIEF_RAM_AVERTISSEMENT_SEUIL } = require('./relief');
 const { creerReliefGrossier } = require('./relief-grossier');
 const { creerCacheRelief } = require('./relief-cache');
 const { estCodeMonde, codeMonde, nomMonde, lieuxMonde, lieuxZone, voisinsMonde } = require('./monde');
 const { paysConnu, listePays, maxRegions, estCodeRegion, codesRegion, construireCode, nomRegion, listeRegions, sontContigus, rectangleRegion, surfaceApproxKm2, LIMITE_SURFACE_KM2 } = require('./regionsPays');
+// Même seuil (en cellules de relief) que RELIEF_RAM_AVERTISSEMENT_SEUIL dans relief.js, converti en km² pour
+// être comparé à surfaceApproxKm2() ici : avertir avant d'enregistrer la zone, sans attendre le redémarrage.
+const SEUIL_AVERTISSEMENT_KM2 = RELIEF_RAM_AVERTISSEMENT_SEUIL * 0.0625;
 const { creerComptes } = require('./comptes');
 const { creerAdministration } = require('./administration');
 const { creerAgents } = require('./agents');
@@ -2473,7 +2476,12 @@ function preparerReglages(b, existants = {}) {
       // zone (voir le garde-fou mémoire de creerRelief) — autant le dire ici, avant d'enregistrer et de redémarrer
       const aireKm2 = surfaceApproxKm2(d.code);
       if (aireKm2 > LIMITE_SURFACE_KM2) throw new Error(`Zone trop grande pour le relief (≈ ${Math.round(aireKm2).toLocaleString('fr')} km², limite ≈ ${Math.round(LIMITE_SURFACE_KM2).toLocaleString('fr')} km²) : choisissez moins de régions, ou de plus petites (RELIEF_CELLULES_MAX permet de relever cette limite si la machine a la RAM nécessaire)`);
-      if (!sontContigus(pays, codes)) r.avertissementZone = `Attention : ${d.nom} ne semble pas former un seul bloc continu (régions non limitrophes ou se touchant juste par un coin)`;
+      const avertissements = [];
+      if (!sontContigus(pays, codes)) avertissements.push(`Attention : ${d.nom} ne semble pas former un seul bloc continu (régions non limitrophes ou se touchant juste par un coin)`);
+      // Même seuil que RELIEF_RAM_AVERTISSEMENT_SEUIL dans relief.js (25 000 000 cellules par défaut) : averti
+      // ici aussi, avant le redémarrage, plutôt que seulement dans le journal une fois la carte relancée
+      if (RELIEF_RAM_AVERTISSEMENT_SEUIL > 0 && aireKm2 > SEUIL_AVERTISSEMENT_KM2) avertissements.push(`Zone très étendue (≈ ${Math.round(aireKm2).toLocaleString('fr')} km²) : ${estimerRam(aireKm2 / 0.0625).go} Go de RAM recommandés`);
+      if (avertissements.length) r.avertissementZone = avertissements.join(' — ');
     }
   }
   if (b.mqtt) {

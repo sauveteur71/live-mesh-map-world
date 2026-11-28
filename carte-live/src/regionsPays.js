@@ -178,14 +178,12 @@ function surfaceApproxKm2(code) {
   const latMoy = ((z[0] + z[2]) / 2) * (Math.PI / 180);
   return (z[2] - z[0] + 2 * MARGE_RELIEF_DEG) * (z[3] - z[1] + 2 * MARGE_RELIEF_DEG) * 111 * 111 * Math.cos(latMoy);
 }
-// Correspond au plafond par défaut de RELIEF_CELLULES_MAX (32 000 000 cellules × 0,0625 km²/cellule) :
-// large d'un seul tenant pour la plupart des États/provinces, mais arrête les unions de plusieurs très
-// grandes régions (voir la note de conception, risques et limites assumées). Au Canada et en Australie,
-// certaines provinces/territoires très étendus (Colombie-Britannique, Ontario, Québec, Territoires du
-// Nord-Ouest, Nunavut, Queensland, Australie-Occidentale) dépassent ce plafond À EUX SEULS, exactement
-// comme une union de plusieurs grands États américains le ferait : un administrateur dans l'une de ces
-// régions doit relever RELIEF_CELLULES_MAX (et disposer de la RAM en face) pour pouvoir l'installer.
-const LIMITE_SURFACE_KM2 = 32_000_000 * 0.0625;
+// Correspond au plafond par défaut de RELIEF_CELLULES_MAX (160 000 000 cellules × 0,0625 km²/cellule,
+// ≈ 10 Mkm²) : choisi pour que même le Nunavut (la plus étendue des régions couvertes ici, ≈ 9,16 Mkm²
+// de rectangle englobant) passe seul, avec une marge d'environ 9 % — voir
+// wiki/Conception-zones-multi-regions.md pour le détail par région. Au-delà, seules des unions de
+// plusieurs très grandes régions restent refusées (voir la note de conception).
+const LIMITE_SURFACE_KM2 = 160_000_000 * 0.0625;
 
 module.exports = {
   PAYS_CONNUS, paysConnu, paysDuCode, drapeauPays, maxRegions, listePays, estCodeRegion, codesRegion,

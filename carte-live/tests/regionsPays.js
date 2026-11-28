@@ -74,14 +74,20 @@ test('contiguïté (avertissement, jamais bloquant) — vrais voisins vs région
   assert.equal(regions.sontContigus('AU', ['WA', 'NSW']), false); // séparés par l'Australie-Méridionale
 });
 
-test('surface approximative : contrairement aux États américains (chaque État, même très grand, passe seul), plusieurs provinces canadiennes et États australiens dépassent la limite à eux seuls — assumé et documenté dans le wiki, pas une erreur de ce module', () => {
-  assert.ok(regions.surfaceApproxKm2('CA-AB') < regions.LIMITE_SURFACE_KM2, 'l’Alberta (province moyenne) doit passer seule');
-  assert.ok(regions.surfaceApproxKm2('CA-ON') > regions.LIMITE_SURFACE_KM2, 'l’Ontario, très étendu, dépasse la limite à lui seul (voir le wiki)');
-  assert.ok(regions.surfaceApproxKm2('CA-QC') > regions.LIMITE_SURFACE_KM2, 'le Québec, très étendu, dépasse la limite à lui seul (voir le wiki)');
-  assert.ok(regions.surfaceApproxKm2('CA-NU') > regions.LIMITE_SURFACE_KM2, 'le Nunavut, immense et proche du pôle, dépasse largement la limite à lui seul');
-  assert.ok(regions.surfaceApproxKm2('AU-TAS') < regions.LIMITE_SURFACE_KM2, 'la Tasmanie (sans Macquarie Island, exclue) doit passer seule');
-  assert.ok(regions.surfaceApproxKm2('AU-NSW') < regions.LIMITE_SURFACE_KM2, 'la Nouvelle-Galles du Sud (sans Lord Howe Island, exclue) doit passer seule');
-  assert.ok(regions.surfaceApproxKm2('AU-QLD') > regions.LIMITE_SURFACE_KM2, 'le Queensland, très étendu, dépasse la limite à lui seul (voir le wiki)');
+test('surface approximative : chaque région passe seule, y compris le Nunavut (le plafond par défaut a été relevé exprès pour ça) — seules les unions de plusieurs très grandes régions restent refusées', () => {
+  assert.ok(regions.surfaceApproxKm2('CA-AB') < regions.LIMITE_SURFACE_KM2, 'l’Alberta (province moyenne) passe seule');
+  assert.ok(regions.surfaceApproxKm2('CA-ON') < regions.LIMITE_SURFACE_KM2, 'l’Ontario passe seul');
+  assert.ok(regions.surfaceApproxKm2('CA-QC') < regions.LIMITE_SURFACE_KM2, 'le Québec passe seul');
+  assert.ok(regions.surfaceApproxKm2('CA-NU') < regions.LIMITE_SURFACE_KM2, 'le Nunavut, la plus étendue des régions ici (≈ 9,1 Mkm²), passe seul — c’est tout l’objet du plafond relevé à 160 M de cellules');
+  assert.ok(regions.surfaceApproxKm2('AU-TAS') < regions.LIMITE_SURFACE_KM2, 'la Tasmanie (sans Macquarie Island, exclue) passe seule');
+  assert.ok(regions.surfaceApproxKm2('AU-NSW') < regions.LIMITE_SURFACE_KM2, 'la Nouvelle-Galles du Sud (sans Lord Howe Island, exclue) passe seule');
+  assert.ok(regions.surfaceApproxKm2('AU-QLD') < regions.LIMITE_SURFACE_KM2, 'le Queensland passe seul');
+  assert.ok(regions.surfaceApproxKm2('AU-WA') < regions.LIMITE_SURFACE_KM2, 'l’Australie-Occidentale passe seule');
+  // Mais une union de deux très grandes régions éloignées reste refusée : le plafond protège toujours contre ce cas
+  const grandCanada = regions.construireCode('CA', ['BC', 'QC']);
+  assert.ok(regions.surfaceApproxKm2(grandCanada) > regions.LIMITE_SURFACE_KM2, 'Colombie-Britannique + Québec (côte à côte du pays) dépasse la limite');
+  const grandeAustralie = regions.construireCode('AU', ['QLD', 'WA']);
+  assert.ok(regions.surfaceApproxKm2(grandeAustralie) > regions.LIMITE_SURFACE_KM2, 'Queensland + Australie-Occidentale (les deux plus grands États) dépasse la limite');
 });
 
 test('relief.js : contourDepartement()/nomDepartement() délèguent à regionsPays pour un code CA-… ou AU-…', () => {
@@ -91,6 +97,19 @@ test('relief.js : contourDepartement()/nomDepartement() délèguent à regionsPa
   assert.equal(relief.nomDepartement('AU-NSW'), 'Nouvelle-Galles du Sud');
   // Un code de département français ordinaire continue de fonctionner comme avant
   assert.equal(relief.nomDepartement('43'), 'Haute-Loire');
+});
+
+test('relief.js : RELIEF_CELLULES_MAX relevé pour que le Nunavut passe seul, estimerRam() proportionnelle à la taille réelle de la zone', () => {
+  // Nunavut (~146,5 M de cellules à 250 m de résolution, voir wiki) doit rester sous le plafond par défaut
+  assert.ok(relief.RELIEF_CELLULES_MAX > 146_526_432, 'le plafond par défaut doit couvrir le Nunavut, avec une marge');
+  // La mémoire estimée est proportionnelle à la taille RÉELLE de la zone, pas au plafond : une petite zone
+  // (département français) et une grande (Nunavut) ne demandent pas la même chose, quel que soit le plafond réglé
+  const petite = relief.estimerRam(275_396); // Haute-Loire
+  const moyenne = relief.estimerRam(27_092_032); // Texas
+  const grande = relief.estimerRam(146_526_432); // Nunavut
+  assert.ok(petite.octets < moyenne.octets && moyenne.octets < grande.octets, 'l’estimation croît avec la taille réelle de la zone');
+  assert.ok(grande.go <= 8, 'l’estimation pour le Nunavut doit rester un ordre de grandeur raisonnable (quelques Go, pas des dizaines)');
+  assert.equal(relief.RELIEF_RAM_AVERTISSEMENT_SEUIL, 25_000_000);
 });
 
 test('liste des pays du registre et leur plafond de régions', () => {
